@@ -1,0 +1,50 @@
+#
+# Copyright (C) 2009-2010 Chris McClelland
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+TARGET = libumdk.a
+
+INCLUDES = \
+	-I../../../include \
+	-I../../../libs/usbwrap \
+	-I../../neopurgo/libsync
+
+CC_SRCS = $(shell ls *.c)
+CC_OBJS = $(CC_SRCS:%.c=$(OBJDIR)/%.o)
+CC = gcc
+CFLAGS = -O3 -Wall -Wextra -Wstrict-prototypes -Wundef -std=c99 -pedantic-errors $(INCLUDES) -D_ISOC99_SOURCE
+OBJDIR = .build
+DEPDIR = .deps
+
+all: $(TARGET) tests
+
+$(TARGET): $(CC_OBJS)
+	$(AR) cr $(TARGET) $(CC_OBJS)
+
+$(OBJDIR)/%.o : %.c
+	$(CC) -c $(CFLAGS) -MMD -MP -MF $(DEPDIR)/$(@F).d -Wa,-adhlns=$(OBJDIR)/$<.lst $< -o $@
+
+-include Makefile.common
+
+clean: FORCE
+	make -C tests clean
+	rm -rf $(OBJDIR) $(TARGET) $(DEPDIR) Debug Release *.ncb *.suo *.user
+
+tests: FORCE
+	make -C tests
+
+-include $(shell mkdir -p $(OBJDIR) $(DEPDIR) 2>/dev/null) $(wildcard $(DEPDIR)/*)
+
+FORCE:

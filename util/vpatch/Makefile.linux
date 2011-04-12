@@ -1,0 +1,48 @@
+#
+# Copyright (C) 2009-2010 Chris McClelland
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+TARGET = vpatch
+LIBS = \
+	 ../../../../libs/argtypes/libargtypes.a \
+	 ../../../../3rd/argtable2-12/src/.libs/libargtable2.a
+
+INCLUDES = \
+	-I../../../../include \
+	-I../../../../libs/argtypes \
+	-I../../../../3rd/argtable2-12/src
+
+CC_SRCS = $(shell ls *.c)
+CC_OBJS = $(CC_SRCS:%.c=$(OBJDIR)/%.o)
+CC = gcc
+CFLAGS = -O3 -Wall -Wextra -Wstrict-prototypes -Wundef -std=c99 -pedantic-errors $(INCLUDES)
+LDFLAGS = -Wl,--relax -Wl,--gc-sections
+OBJDIR = .build
+DEPDIR = .deps
+
+all: $(TARGET)
+
+$(TARGET): $(CC_OBJS)
+	$(CC) $(LDFLAGS) -Wl,-Map=$(OBJDIR)/$(TARGET).map,--cref -o $(TARGET) $(CC_OBJS) $(LIBS)
+	strip $(TARGET)
+
+$(OBJDIR)/%.o : %.c
+	$(CC) -c $(CFLAGS) -MMD -MP -MF $(DEPDIR)/$(@F).d -Wa,-adhlns=$(OBJDIR)/$<.lst $< -o $@
+
+clean: FORCE
+	rm -rf $(OBJDIR) $(TARGET) $(DEPDIR) Debug Release *.ncb *.suo *.sln *.user
+
+-include $(shell mkdir -p $(OBJDIR) $(DEPDIR) 2>/dev/null) $(wildcard $(DEPDIR)/*)
+FORCE:
