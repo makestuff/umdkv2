@@ -145,8 +145,15 @@ NET "mdData_io<14>"   LOC = "C14"; # Bank = 0, Pin name = IO_L03N_0/VREF_0, Type
 NET "mdData_io<15>"   LOC = "E13"; # Bank = 0, Pin name = IO, Type = I/O, Sch name = R-IO34
 
 # Debug ports
-NET "jc2_out" LOC = "J16"; # Bank = 1, Pin name = IO_L13N_1/A5/RHCLK5, Type = RHCLK/DUAL, Sch name = JC2
-NET "jc7_out" LOC = "H15"; # Bank = 1, Pin name = IO_L17N_1, Type = I/O, Sch name = JC7
+NET "jc2_out"         LOC = "J16"; # Bank = 1, Pin name = IO_L13N_1/A5/RHCLK5, Type = RHCLK/DUAL, Sch name = JC2
+NET "jc7_out"         LOC = "H15"; # Bank = 1, Pin name = IO_L17N_1, Type = I/O, Sch name = JC7
+
+# SD-Card connections
+NET "sdDO_in"         LOC = "L15"; # Bank = 1, Pin name = IO_L09N_1/A11, Type = DUAL, Sch name = JA1
+NET "sdClk_out"       LOC = "K12"; # Bank = 1, Pin name = IO_L11N_1/A9/RHCLK1, Type = RHCLK/DUAL, Sch name = JA2
+NET "sdDI_out"        LOC = "L17"; # Bank = 1, Pin name = IO_L10N_1/VREF_1, Type = VREF, Sch name = JA3
+NET "sdCS_out"        LOC = "M15"; # Bank = 1, Pin name = IO_L07P_1, Type = I/O, Sch name = JA4
+NET "sdCD_in"         LOC = "K13"; # Bank = 1, Pin name = IO_L11P_1/A10/RHCLK0, Type = RHCLK/DUAL, Sch name = JA7
 
 # On-board peripheral signals
 NET "led_out<0>"      LOC = "J14";

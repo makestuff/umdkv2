@@ -1,5 +1,5 @@
 --
--- Copyright (C) 2009-2011 Chris McClelland
+-- Copyright (C) 2011 Chris McClelland
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -53,6 +53,13 @@ entity TopLevel is
 		ramUB_out    : out   std_logic;
 		ramWait_in   : in    std_logic;
 
+		-- SD-Card signals
+		sdDO_in      : in    std_logic;  -- Serial data from the SD card
+		sdClk_out    : out   std_logic;  -- Serial clock to the SD card
+		sdDI_out     : out   std_logic;  -- Serial data to the SD card
+		sdCS_out     : out   std_logic;  -- SD card chip select (active-low)
+		sdCD_in      : in    std_logic;  -- SD card detect (low when card inserted)
+
 		-- MegaDrive signals
 		mdReset_out  : out   std_logic;  -- while 'Z', MD stays in RESET; drive low to bring MD out of RESET.
 		mdBufOE_out  : out   std_logic;  -- while 'Z', MD is isolated; drive low to enable all three buffers.
@@ -66,8 +73,8 @@ entity TopLevel is
 		mdData_io    : inout std_logic_vector(15 downto 0);
 
 		-- Debug ports
-		jc2_out   : out   std_logic;
-		jc7_out   : out   std_logic;
+		jc2_out      : out   std_logic;
+		jc7_out      : out   std_logic;
 
 		-- Onboard peripherals
 		sseg_out     : out   std_logic_vector(7 downto 0);
@@ -502,8 +509,14 @@ begin
 	clkDiv_next <= std_logic_vector((unsigned(clkDiv) + 1));
 
 	-- Mop up all the unused signals to prevent synthesis warnings
-	sseg_out(7) <= flagA_in and int0_in;
-	led_out <= r4;
+	sseg_out(7) <=
+		flagA_in and int0_in and sdDO_in and r4(3) and r4(4)
+		and r4(5) and r4(6) and r4(7);
+	led_out <= "0000" & not(sdCD_in) & r4(2 downto 0);
+
+	sdClk_out <= '0';
+	sdDI_out <= '0';
+	sdCS_out <= '1';
 	
 	-- Outputs to MegaDrive
 	mdReset <= not(r4(FLAG_RESET));  -- Keep MD in reset unless sw(0) is on.
