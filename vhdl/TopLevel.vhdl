@@ -168,7 +168,10 @@ architecture Behavioural of TopLevel is
 	constant MD_WRITING                      : std_logic := '0';
 	constant FLAG_RESET                      : integer := 0;
 	constant FLAG_PAUSE                      : integer := 1;
-	
+	constant OPCODE_ILLEGAL                  : std_logic_vector(15 downto 0) := x"4AFC";
+	constant OPCODE_RTS                      : std_logic_vector(15 downto 0) := x"4E75";
+	constant OPCODE_BRA                      : std_logic_vector(15 downto 0) := x"60FE";
+	constant IO_ADDR                         : std_logic_vector(18 downto 0) := "101" & x"0980";
 begin
 
 	-- All change!
@@ -485,11 +488,11 @@ begin
 	-- Host communication state machine
 	process(hstate, mdReg00Sync, r4) begin
 		hstate_next <= hstate;
-		mdOpcode <= x"60FE";  -- "bra.s -2"
+		mdOpcode <= OPCODE_BRA;  -- "bra.s -2"
 		mdIsLooping <= '0';
 		case hstate is
 			when HSTATE_IDLE =>
-				mdOpcode <= x"4E75";  -- "rts" by default
+				mdOpcode <= OPCODE_RTS;  -- "rts" by default
 				if ( r4(FLAG_PAUSE) = '1' and mdReg00Sync = '0' ) then
 					hstate_next <= HSTATE_WAIT_LOOPING;
 				end if;
@@ -526,16 +529,16 @@ begin
 	mdRead <= not(mdOE_in) and not(mdAddr_in(22));  -- Reads to cart & expansion address space.
 	mdWrite <= not(mdLDSW_in) and not (mdAddr_in(22));  -- Writes to cart & expansion address space.
 	mdReg00 <=
-		'1' when mdAddr_in = "101" & x"09800" and mdOE_in = '0'  -- read 0xA13000
+		'1' when mdAddr_in = IO_ADDR & x"0" and mdOE_in = '0'  -- read 0xA13000
 		else '0';
 	mdReg01 <=
-		'1' when mdAddr_in = "101" & x"09801" and mdLDSW_in = '0'  -- write 0xA13002
+		'1' when mdAddr_in = IO_ADDR & x"1" and mdLDSW_in = '0'  -- write 0xA13002
 		else '0';
 
 	-- The actual value to write on the data bus, and whether or not to drive it
 	mdDataOut <=
 		mdOpcode when mdReg00Sync = '1' else
-		x"4afc" when mdAddr_in = brkAddr and brkEnabled = '1' else
+		OPCODE_ILLEGAL when mdAddr_in = brkAddr and brkEnabled = '1' else
 		memOutData;
 	mdDriveBus <= mdReadSync or mdReg00Sync;
 	
