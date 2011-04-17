@@ -4,7 +4,8 @@ VHDLS = \
 	$(TOP_LEVEL).vhdl \
 	ClockGenerator.vhdl \
 	MemoryController.vhdl \
-	SevenSeg.vhdl
+	SevenSeg.vhdl \
+	serialio/serialio.vhdl
 
 ifeq ($(PLATFORM),s3board)
 	FPGA = xc3s200-ft256-4

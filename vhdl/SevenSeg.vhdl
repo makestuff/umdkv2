@@ -32,7 +32,8 @@ architecture Behavioural of SevenSeg is
 
 	-- Refresh rate 50M/2^18 ~ 190Hz
 	-- Refresh rate 8M/2^16 ~ 122Hz
-	constant COUNTER_WIDTH : natural := 12;
+	-- Refresh rate 48M/2^19 ~ 92Hz	
+	constant COUNTER_WIDTH : natural := 19;
 
 	signal count        : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
 	signal count_next   : unsigned(COUNTER_WIDTH-1 downto 0);

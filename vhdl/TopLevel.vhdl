@@ -106,7 +106,8 @@ architecture Behavioural of TopLevel is
 		MSTATE_WAIT_READ,
 		MSTATE_MEM_WRITE,
 		MSTATE_WAIT_WRITE,
-		MSTATE_REG_WRITE
+		MSTATE_REG01_WRITE,
+		MSTATE_REG03_WRITE
 	);
 	type HStateType is (
 		HSTATE_IDLE,
@@ -119,7 +120,6 @@ architecture Behavioural of TopLevel is
 	signal mstate, mstate_next               : MStateType;
 	signal hstate, hstate_next               : HStateType;
 	signal clk48, clk96, clk96Valid          : std_logic;
-	signal clkDiv, clkDiv_next               : std_logic_vector(7 downto 0);
 
 	-- FX2LP register read/write
 	signal fifoOp                            : std_logic_vector(2 downto 0);
@@ -139,15 +139,21 @@ architecture Behavioural of TopLevel is
 	signal memBusy                           : std_logic;
 	signal memReset                          : std_logic;
 	signal hostOwnsMemory                    : std_logic;
-	
+
+	-- SD controller signals
+	signal sdRecvData                        : std_logic_vector(7 downto 0);
+	signal sdLoad, sdBusy                    : std_logic;
+
 	-- MegaDrive signals
 	signal mdReset                           : std_logic;
 	signal mdRead, mdReadSync                : std_logic;
 	signal mdWrite, mdWriteSync              : std_logic;
 	signal mdReg00, mdReg01                  : std_logic;
+	signal mdReg02, mdReg03                  : std_logic;
 	signal mdDriveBus                        : std_logic;
 	signal mdDataOut                         : std_logic_vector(15 downto 0);
 	signal mdReg00Sync, mdReg01Sync          : std_logic;
+	signal mdReg02Sync, mdReg03Sync          : std_logic;
 	signal mdDataSync                        : std_logic_vector(15 downto 0);
 	signal sevenSegData, sevenSegData_next   : std_logic_vector(15 downto 0);
 	signal mdOpcode                          : std_logic_vector(15 downto 0);
@@ -172,6 +178,7 @@ architecture Behavioural of TopLevel is
 	constant OPCODE_RTS                      : std_logic_vector(15 downto 0) := x"4E75";
 	constant OPCODE_BRA                      : std_logic_vector(15 downto 0) := x"60FE";
 	constant IO_ADDR                         : std_logic_vector(18 downto 0) := "101" & x"0980";
+
 begin
 
 	-- All change!
@@ -189,12 +196,13 @@ begin
 			brkAddr       <= (others => '0');
 			brkEnabled    <= '0';
 			r4            <= (others => '0');
-			clkDiv        <= (others => '0');
 			mstate        <= MSTATE_IDLE;
 			mdReadSync    <= '1';
 			mdWriteSync    <= '1';
 			mdReg00Sync   <= '0';
 			mdReg01Sync   <= '0';
+			mdReg02Sync   <= '0';
+			mdReg03Sync   <= '0';
 			mdDataSync    <= (others => '0');
 			sevenSegData  <= (others => '0');
 			hstate        <= HSTATE_IDLE;
@@ -210,12 +218,13 @@ begin
 			brkAddr       <= brkAddr_next;
 			brkEnabled    <= brkEnabled_next;
 			r4            <= r4_next;
-			clkDiv        <= clkDiv_next;
 			mstate        <= mstate_next;
 			mdReadSync    <= mdRead;
 			mdWriteSync   <= mdWrite;
 			mdReg00Sync   <= mdReg00;
 			mdReg01Sync   <= mdReg01;
+			mdReg02Sync   <= mdReg02;
+			mdReg03Sync   <= mdReg03;
 			mdDataSync    <= mdData_io;
 			sevenSegData  <= sevenSegData_next;
 			hstate        <= hstate_next;
@@ -437,9 +446,10 @@ begin
 	end process;
 
 	-- Bus arbitration state machine
-	process(mstate, mdReadSync, mdWriteSync, mdReg00Sync, mdReg01Sync, mdDataSync, sevenSegData) begin
+	process(mstate, mdReadSync, mdWriteSync, mdReg00Sync, mdReg01Sync, mdReg03Sync, mdLDSW_in, mdDataSync, sevenSegData) begin
 		mdMemOp <= MEM_NOP;
 		sevenSegData_next <= sevenSegData;
+		sdLoad <= '0';
 		case mstate is
 			when MSTATE_IDLE =>
 				if ( mdReadSync = '1' ) then
@@ -447,7 +457,9 @@ begin
 				elsif ( mdWriteSync = '1' ) then
 					mstate_next <= MSTATE_MEM_WRITE;
 				elsif ( mdReg01Sync = '1' ) then
-					mstate_next <= MSTATE_REG_WRITE;
+					mstate_next <= MSTATE_REG01_WRITE;
+				elsif ( mdReg03Sync = '1' and mdLDSW_in = '0' ) then
+					mstate_next <= MSTATE_REG03_WRITE;
 				else
 					mstate_next <= MSTATE_IDLE;
 				end if;
@@ -474,12 +486,21 @@ begin
 					mstate_next <= MSTATE_IDLE;
 				end if;
 
-			-- Register write
-			when MSTATE_REG_WRITE =>
+			-- Register 01 write
+			when MSTATE_REG01_WRITE =>
 				if ( mdReg01Sync = '1' ) then
-					mstate_next <= MSTATE_REG_WRITE;
+					mstate_next <= MSTATE_REG01_WRITE;
 				else
 					sevenSegData_next <= mdDataSync;
+					mstate_next <= MSTATE_IDLE;
+				end if;
+
+			-- Register 03 write
+			when MSTATE_REG03_WRITE =>
+				if ( mdReg03Sync = '1' ) then
+					mstate_next <= MSTATE_REG03_WRITE;
+				else
+					sdLoad <= '1';
 					mstate_next <= MSTATE_IDLE;
 				end if;
 		end case;
@@ -507,19 +528,13 @@ begin
 				end if;
 		end case;
 	end process;
-				
-	-- Divide the clock
-	clkDiv_next <= std_logic_vector((unsigned(clkDiv) + 1));
 
 	-- Mop up all the unused signals to prevent synthesis warnings
 	sseg_out(7) <=
-		flagA_in and int0_in and sdDO_in and r4(3) and r4(4)
-		and r4(5) and r4(6) and r4(7);
+		flagA_in and int0_in and r4(3) and r4(4) and r4(5) and r4(6) and r4(7);
 	led_out <= "0000" & not(sdCD_in) & r4(2 downto 0);
 
-	sdClk_out <= '0';
-	sdDI_out <= '0';
-	sdCS_out <= '1';
+	sdCS_out <= not r4(4);  -- TODO: map into 68000 I/O
 	
 	-- Outputs to MegaDrive
 	mdReset <= not(r4(FLAG_RESET));  -- Keep MD in reset unless sw(0) is on.
@@ -534,13 +549,21 @@ begin
 	mdReg01 <=
 		'1' when mdAddr_in = IO_ADDR & x"1" and mdLDSW_in = '0'  -- write 0xA13002
 		else '0';
+	mdReg02 <=
+		'1' when mdAddr_in = IO_ADDR & x"2" and mdOE_in = '0'  -- read 0xA13004
+		else '0';
+	mdReg03 <=
+		'1' when mdAddr_in = IO_ADDR & x"3" -- read/write 0xA13006
+		else '0';
 
 	-- The actual value to write on the data bus, and whether or not to drive it
 	mdDataOut <=
 		mdOpcode when mdReg00Sync = '1' else
+		x"000" & "00" & sdBusy & sdCD_in when mdReg02Sync = '1' else
+		x"00" & sdRecvData when mdReg03Sync = '1' and mdOE_in = '0' else
 		OPCODE_ILLEGAL when mdAddr_in = brkAddr and brkEnabled = '1' else
 		memOutData;
-	mdDriveBus <= mdReadSync or mdReg00Sync;
+	mdDriveBus <= mdReadSync or mdReg00Sync or mdReg02Sync;
 	
 	-- Drive bus & buffers. Must use same signal for muxing mdData_io as for mdBufDir_out
 	mdBufOE_out <= '0';  -- Level converters always on (pulled up during FPGA programming)
@@ -578,7 +601,7 @@ begin
 	sloe_out <= fifoOp(0);
 	slrd_out <= fifoOp(1);
 	slwr_out <= fifoOp(2);
-	
+
 	-- Double the IFCLK to get 96MHz
 	clockGenerator: entity work.ClockGenerator
 		port map (
@@ -617,9 +640,24 @@ begin
 	-- Display the RAM data
 	sevenSeg : entity work.SevenSeg
 		port map(
-			clk    => clkDiv(7),
+			clk    => clk48,
 			data   => sevenSegData,
 			segs   => sseg_out(6 downto 0),
 			anodes => anode_out
 		);
+
+	serialio: entity work.serialio
+		port map(
+			reset_in  => reset_in,
+			clk_in    => clk48,
+			data_in   => mdDataSync(7 downto 0),
+			data_out  => sdRecvData,
+			load_in   => sdLoad,
+			turbo_in  => r4(3),  -- TODO: map into 68000 I/O
+			busy_out  => sdBusy,
+			sData_out => sdDI_out,
+			sData_in  => sdDO_in,
+			sClk_out  => sdClk_out
+		);
+
 end Behavioural;
