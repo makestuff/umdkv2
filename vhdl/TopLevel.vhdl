@@ -133,7 +133,6 @@ architecture Behavioural of TopLevel is
 	signal selectByte_next    : std_logic;
 
 	-- MegaDrive signals
-	signal mdReset            : std_logic;
 	signal mdAccessMem        : std_logic;
 	signal mdAccessIO         : std_logic;
 	signal mdBeginRead        : std_logic;
@@ -617,8 +616,7 @@ begin
 	
 	------------------------------------------------------------------------------------------------
 	-- Generate signals for the 68000 bus interface and UMDKv2 buffers
-	mdReset <= not(r4(FLAG_RUN));
-	mdReset_out <= mdReset;
+	mdReset_out <= not(r4(FLAG_RUN));
 	businterface: entity work.businterface
 		port map(
 			reset_in         => reset_in,
