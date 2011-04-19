@@ -19,16 +19,16 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity SevenSeg is
+entity sevenseg is
 	port(
 		clk     : in    std_logic;
 		data    : in    std_logic_vector(15 downto 0);
 		segs    : out   std_logic_vector(6 downto 0);
 		anodes  : out   std_logic_vector(3 downto 0)
 	);
-end SevenSeg;
+end entity;
 
-architecture Behavioural of SevenSeg is
+architecture behavioural of sevenseg is
 
 	-- Refresh rate 50M/2^18 ~ 190Hz
 	-- Refresh rate 8M/2^16 ~ 122Hz
@@ -87,4 +87,4 @@ begin
 			"0000110" when "1110",
 			"0001110" when others;
 
-end Behavioural;
+end architecture;

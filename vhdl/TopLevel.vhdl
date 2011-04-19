@@ -24,10 +24,6 @@ entity TopLevel is
 		reset_in     : in    std_logic;
 		ifclk_in     : in    std_logic;
 
-		-- Unused FX2LP connections configured as inputs
-		flagA_in     : in    std_logic;
-		int0_in      : in    std_logic;
-
 		-- Data & control from the FX2
 		fifoData_io  : inout std_logic_vector(7 downto 0);
 		gotData_in   : in    std_logic;                     -- FLAGC=EF (active-low), so '1' when there's data
@@ -53,139 +49,135 @@ entity TopLevel is
 		ramUB_out    : out   std_logic;
 		ramWait_in   : in    std_logic;
 
-		-- SD-Card signals
-		sdDO_in      : in    std_logic;  -- Serial data from the SD card
-		sdClk_out    : out   std_logic;  -- Serial clock to the SD card
-		sdDI_out     : out   std_logic;  -- Serial data to the SD card
-		sdCS_out     : out   std_logic;  -- SD card chip select (active-low)
-		sdCD_in      : in    std_logic;  -- SD card detect (low when card inserted)
-
 		-- MegaDrive signals
 		mdReset_out  : out   std_logic;  -- while 'Z', MD stays in RESET; drive low to bring MD out of RESET.
 		mdBufOE_out  : out   std_logic;  -- while 'Z', MD is isolated; drive low to enable all three buffers.
 		mdBufDir_out : out   std_logic;  -- drive high when MegaDrive reading, low when MegaDrive writing.
-		mdOE_in      : in    std_logic;  -- active low output enable: asserted when MD accesses cartridge address space.
-		mdLDSW_in    : in    std_logic;  -- active low lower data strobe write.
-		--mdUDSW_in    : in    std_logic;  -- active low upper data strobe write.
-		--mdClk_in     : in    std_logic;  -- 7.6MHz MegaDrive clock (not used).
-		--mdAS_in      : in    std_logic;  -- active low address strobe from 68000 (not asserted for non-68000 cycles).
+		mdOE_in      : in    std_logic;  -- active low output enable: asserted when MD reads.
+		mdLDSW_in    : in    std_logic;  -- active low output enable: asserted when MD writes.
 		mdAddr_in    : in    std_logic_vector(22 downto 0);
 		mdData_io    : inout std_logic_vector(15 downto 0);
 
-		-- Debug ports
-		jc2_out      : out   std_logic;
-		jc7_out      : out   std_logic;
-
 		-- Onboard peripherals
 		sseg_out     : out   std_logic_vector(7 downto 0);
-		anode_out    : out   std_logic_vector(3 downto 0);
-		led_out      : out   std_logic_vector(7 downto 0)
+		anode_out    : out   std_logic_vector(3 downto 0)
 	);
 end TopLevel;
 
 architecture Behavioural of TopLevel is
 	
-	-- FSM states
-	type StateType is (
-		STATE_IDLE,
-		STATE_GET_COUNT0,
-		STATE_GET_COUNT1,
-		STATE_GET_COUNT2,
-		STATE_GET_COUNT3,
-		STATE_BEGIN_WRITE,
-		STATE_WRITE,
-		STATE_WRITE_WAIT,
-		STATE_END_WRITE_ALIGNED,
-		STATE_END_WRITE_NONALIGNED,
-		STATE_READ,
-		STATE_READ_WAIT
+	type HStateType is (
+		HSTATE_IDLE,
+		HSTATE_GET_COUNT0,
+		HSTATE_GET_COUNT1,
+		HSTATE_GET_COUNT2,
+		HSTATE_GET_COUNT3,
+		HSTATE_BEGIN_WRITE,
+		HSTATE_WRITE,
+		HSTATE_WRITE_WAIT,
+		HSTATE_END_WRITE_ALIGNED,
+		HSTATE_END_WRITE_NONALIGNED,
+		HSTATE_READ,
+		HSTATE_READ_WAIT
 	);
 	type MStateType is (
 		MSTATE_IDLE,
-		MSTATE_MEM_READ,
 		MSTATE_WAIT_READ,
-		MSTATE_MEM_WRITE,
-		MSTATE_WAIT_WRITE,
-		MSTATE_REG01_WRITE,
-		MSTATE_REG03_WRITE
+		MSTATE_WAIT_WRITE
 	);
-	type HStateType is (
-		HSTATE_IDLE,
-		HSTATE_WAIT_LOOPING,
-		HSTATE_ACK_LOOPING
+	type AStateType is (
+		ASTATE_IDLE,
+		ASTATE_RESET,
+		ASTATE_WAIT_LOOPING,
+		ASTATE_ACK_LOOPING
 	);
 	
 	-- FSM state & clocks
-	signal state, state_next                 : StateType;
-	signal mstate, mstate_next               : MStateType;
-	signal hstate, hstate_next               : HStateType;
-	signal clk48, clk96, clk96Valid          : std_logic;
+	signal hstate             : HStateType; -- host interface state
+	signal hstate_next        : HStateType;
+	signal mstate             : MStateType; -- m68k interface state
+	signal mstate_next        : MStateType;
+	signal astate             : AStateType; -- arbitration state
+	signal astate_next        : AStateType;
+	signal clk48              : std_logic;
+	signal clk96              : std_logic;
+	signal clk96Valid         : std_logic;
 
 	-- FX2LP register read/write
-	signal fifoOp                            : std_logic_vector(2 downto 0);
-	signal regAddr, regAddr_next             : std_logic_vector(2 downto 0);  -- up to seven bits available
-	signal isWrite, isWrite_next             : std_logic;
-	signal isAligned, isAligned_next         : std_logic;
-	signal hostByteCount, hostByteCount_next : unsigned(31 downto 0);  -- Read/Write count
-	signal r4, r4_next                       : std_logic_vector(7 downto 0);
-	
-	-- Memory read/write
-	signal hostAddr, hostAddr_next           : std_logic_vector(22 downto 0);
-	signal hostData, hostData_next           : std_logic_vector(15 downto 0);
-	signal selectByte, selectByte_next       : std_logic;
-	signal hostMemOp, mdMemOp, memOp         : std_logic_vector(1 downto 0);
-	signal memAddr                           : std_logic_vector(22 downto 0);
-	signal memInData, memOutData             : std_logic_vector(15 downto 0);
-	signal memBusy                           : std_logic;
-	signal memReset                          : std_logic;
-	signal hostOwnsMemory                    : std_logic;
+	signal fifoOp             : std_logic_vector(2 downto 0);
+	signal regAddr            : std_logic_vector(2 downto 0);  -- up to seven bits available
+	signal regAddr_next       : std_logic_vector(2 downto 0);  -- up to seven bits available
+	signal isWrite            : std_logic;
+	signal isWrite_next       : std_logic;
+	signal isAligned          : std_logic;
+	signal isAligned_next     : std_logic;
+	signal hostByteCount      : unsigned(31 downto 0);  -- Read/Write count
+	signal hostByteCount_next : unsigned(31 downto 0);  -- Read/Write count
+	signal r4, r4_next        : std_logic_vector(7 downto 0);
 
-	-- SD controller signals
-	signal sdRecvData                        : std_logic_vector(7 downto 0);
-	signal sdLoad, sdBusy                    : std_logic;
+	-- Memory read/write
+	signal memOp              : std_logic_vector(1 downto 0);
+	signal mdMemOp            : std_logic_vector(1 downto 0);
+	signal mdMemOp_next       : std_logic_vector(1 downto 0);
+	signal hostMemOp          : std_logic_vector(1 downto 0);
+	signal memAddr            : std_logic_vector(22 downto 0);
+	signal memInData          : std_logic_vector(15 downto 0);
+	signal memOutData         : std_logic_vector(15 downto 0);
+	signal memBusy            : std_logic;
+	signal memReset           : std_logic;
+	signal hostAddr           : std_logic_vector(22 downto 0);
+	signal hostAddr_next      : std_logic_vector(22 downto 0);
+	signal hostData           : std_logic_vector(15 downto 0);
+	signal hostData_next      : std_logic_vector(15 downto 0);
+	signal selectByte         : std_logic;
+	signal selectByte_next    : std_logic;
 
 	-- MegaDrive signals
-	signal mdReset                           : std_logic;
-	signal mdRead, mdReadSync                : std_logic;
-	signal mdWrite, mdWriteSync              : std_logic;
-	signal mdReg00, mdReg01                  : std_logic;
-	signal mdReg02, mdReg03                  : std_logic;
-	signal mdDriveBus                        : std_logic;
-	signal mdDataOut                         : std_logic_vector(15 downto 0);
-	signal mdReg00Sync, mdReg01Sync          : std_logic;
-	signal mdReg02Sync, mdReg03Sync          : std_logic;
-	signal mdDataSync                        : std_logic_vector(15 downto 0);
-	signal sevenSegData, sevenSegData_next   : std_logic_vector(15 downto 0);
-	signal mdOpcode                          : std_logic_vector(15 downto 0);
-	signal mdIsLooping                       : std_logic;
-	signal brkAddr, brkAddr_next             : std_logic_vector(22 downto 0);
-	signal brkEnabled, brkEnabled_next       : std_logic;
-	
+	signal mdReset            : std_logic;
+	signal mdAccessMem        : std_logic;
+	signal mdAccessIO         : std_logic;
+	signal mdBeginRead        : std_logic;
+	signal mdBeginWrite       : std_logic;
+	signal mdSyncOE           : std_logic;
+	signal mdSyncWE           : std_logic;
+	signal mdHasYielded       : std_logic;
+	signal mdReadData         : std_logic_vector(15 downto 0);
+	signal mdOpcode           : std_logic_vector(15 downto 0);
+	signal brkAddr            : std_logic_vector(22 downto 0);
+	signal brkAddr_next       : std_logic_vector(22 downto 0);
+	signal brkEnabled         : std_logic;
+	signal brkEnabled_next    : std_logic;
+
+	-- 7-seg display
+	signal ssData             : std_logic_vector(15 downto 0);
+	signal ssData_next        : std_logic_vector(15 downto 0);
+
 	-- Constants
-	constant MEM_READ                        : std_logic_vector(1 downto 0) := "11";   -- read, req
-	constant MEM_WRITE                       : std_logic_vector(1 downto 0) := "01";   -- write, req
-	constant MEM_NOP                         : std_logic_vector(1 downto 0) := "00";   -- xxx, no req
-	constant FIFO_READ                       : std_logic_vector(2 downto 0) := "100";  -- assert slrd_out & sloe_out
-	constant FIFO_WRITE                      : std_logic_vector(2 downto 0) := "011";  -- assert slwr_out
-	constant FIFO_NOP                        : std_logic_vector(2 downto 0) := "111";  -- assert nothing
-	constant OUT_FIFO                        : std_logic_vector(1 downto 0) := "10";   -- EP6OUT
-	constant IN_FIFO                         : std_logic_vector(1 downto 0) := "11";   -- EP8IN
-	constant MD_READING                      : std_logic := '1';
-	constant MD_WRITING                      : std_logic := '0';
-	constant FLAG_RESET                      : integer := 0;
-	constant FLAG_PAUSE                      : integer := 1;
-	constant OPCODE_ILLEGAL                  : std_logic_vector(15 downto 0) := x"4AFC";
-	constant OPCODE_RTS                      : std_logic_vector(15 downto 0) := x"4E75";
-	constant OPCODE_BRA                      : std_logic_vector(15 downto 0) := x"60FE";
-	constant IO_ADDR                         : std_logic_vector(18 downto 0) := "101" & x"0980";
+	constant MEM_READ         : std_logic_vector(1 downto 0) := "11";   -- read, req
+	constant MEM_WRITE        : std_logic_vector(1 downto 0) := "01";   -- write, req
+	constant MEM_NOP          : std_logic_vector(1 downto 0) := "00";   -- xxx, no req
+	constant FIFO_READ        : std_logic_vector(2 downto 0) := "100";  -- assert slrd_out & sloe_out
+	constant FIFO_WRITE       : std_logic_vector(2 downto 0) := "011";  -- assert slwr_out
+	constant FIFO_NOP         : std_logic_vector(2 downto 0) := "111";  -- assert nothing
+	constant OUT_FIFO         : std_logic_vector(1 downto 0) := "10";   -- EP6OUT
+	constant IN_FIFO          : std_logic_vector(1 downto 0) := "11";   -- EP8IN
+	constant FLAG_RUN         : integer := 0;
+	constant FLAG_PAUSE       : integer := 1;
+	constant OPCODE_ILLEGAL   : std_logic_vector(15 downto 0) := x"4AFC";
+	constant OPCODE_RTS       : std_logic_vector(15 downto 0) := x"4E75";
+	constant OPCODE_BRA       : std_logic_vector(15 downto 0) := x"60FE";
 
 begin
 
+	------------------------------------------------------------------------------------------------
 	-- All change!
 	process(clk48, reset_in)
 	begin
 		if ( reset_in = '1' ) then
-			state         <= STATE_IDLE;
+			mstate        <= MSTATE_IDLE;
+			mdMemOp       <= MEM_NOP;
+			ssData        <= (others => '0');
+			hstate        <= HSTATE_IDLE;
 			hostByteCount <= (others => '0');
 			regAddr       <= (others => '0');
 			isWrite       <= '0';
@@ -196,18 +188,12 @@ begin
 			brkAddr       <= (others => '0');
 			brkEnabled    <= '0';
 			r4            <= (others => '0');
-			mstate        <= MSTATE_IDLE;
-			mdReadSync    <= '1';
-			mdWriteSync    <= '1';
-			mdReg00Sync   <= '0';
-			mdReg01Sync   <= '0';
-			mdReg02Sync   <= '0';
-			mdReg03Sync   <= '0';
-			mdDataSync    <= (others => '0');
-			sevenSegData  <= (others => '0');
-			hstate        <= HSTATE_IDLE;
+			astate        <= ASTATE_IDLE;
 		elsif ( clk48'event and clk48 = '1' ) then
-			state         <= state_next;
+			mstate        <= mstate_next;
+			mdMemOp       <= mdMemOp_next;
+			ssData        <= ssData_next;
+			hstate        <= hstate_next;
 			hostByteCount <= hostByteCount_next;
 			regAddr       <= regAddr_next;
 			isWrite       <= isWrite_next;
@@ -218,25 +204,34 @@ begin
 			brkAddr       <= brkAddr_next;
 			brkEnabled    <= brkEnabled_next;
 			r4            <= r4_next;
-			mstate        <= mstate_next;
-			mdReadSync    <= mdRead;
-			mdWriteSync   <= mdWrite;
-			mdReg00Sync   <= mdReg00;
-			mdReg01Sync   <= mdReg01;
-			mdReg02Sync   <= mdReg02;
-			mdReg03Sync   <= mdReg03;
-			mdDataSync    <= mdData_io;
-			sevenSegData  <= sevenSegData_next;
-			hstate        <= hstate_next;
+			astate        <= astate_next;
 		end if;
 	end process;
 
-	-- Next state logic
+	
+	------------------------------------------------------------------------------------------------
+	-- Host interface state machine
 	process(
-		state, fifoData_io, gotData_in, gotRoom_in, hostByteCount, regAddr, r4, mdIsLooping,
-		hostData, hostAddr, brkAddr, brkEnabled, isAligned, isWrite, memBusy, memOutData, selectByte)
+		hstate,
+		fifoData_io,
+		gotData_in,
+		gotRoom_in,
+		hostByteCount,
+		regAddr,
+		r4,
+		mdHasYielded,
+		hostData,
+		hostAddr,
+		brkAddr,
+		brkEnabled,
+		isAligned,
+		isWrite,
+		memBusy,
+		memOutData,
+		selectByte
+	)
 	begin
-		state_next         <= state;
+		hstate_next        <= hstate;
 		hostByteCount_next <= hostByteCount;    -- how many bytes of this operation remain?
 		regAddr_next       <= regAddr;          -- which register is this operation for?
 		isWrite_next       <= isWrite;          -- is this to be a FIFO write?
@@ -252,68 +247,68 @@ begin
 		fifoOp             <= FIFO_READ;        -- read the FX2LP FIFO by default
 		pktEnd_out         <= '1';              -- inactive: FPGA does not commit a short packet.
 
-		case state is
+		case hstate is
 
 			-- Idle: wait for a command from the host
-			when STATE_IDLE =>
+			when HSTATE_IDLE =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
 				if ( gotData_in = '1' ) then
 					-- The read/write flag and a seven-bit register address will be available on the
 					-- next clock edge.
 					regAddr_next <= fifoData_io(2 downto 0);
 					isWrite_next <= fifoData_io(7);
-					state_next   <= STATE_GET_COUNT0;
+					hstate_next  <= HSTATE_GET_COUNT0;
 				end if;
 				
 			-- Get most-significant byte of the count
-			when STATE_GET_COUNT0 =>
+			when HSTATE_GET_COUNT0 =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
 				if ( gotData_in = '1' ) then
 					-- The count high word high byte will be available on the next clock edge.
 					hostByteCount_next(31 downto 24) <= unsigned(fifoData_io);
-					state_next <= STATE_GET_COUNT1;
+					hstate_next <= HSTATE_GET_COUNT1;
 				end if;
 
 			-- Get next byte of the count
-			when STATE_GET_COUNT1 =>
+			when HSTATE_GET_COUNT1 =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
 				if ( gotData_in = '1' ) then
 					-- The count high word low byte will be available on the next clock edge.
 					hostByteCount_next(23 downto 16) <= unsigned(fifoData_io);
-					state_next <= STATE_GET_COUNT2;
+					hstate_next <= HSTATE_GET_COUNT2;
 				end if;
 
 			-- Get next byte of the count
-			when STATE_GET_COUNT2 =>
+			when HSTATE_GET_COUNT2 =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
 				if ( gotData_in = '1' ) then
 					-- The count low word high byte will be available on the next clock edge.
 					hostByteCount_next(15 downto 8) <= unsigned(fifoData_io);
-					state_next <= STATE_GET_COUNT3;
+					hstate_next <= HSTATE_GET_COUNT3;
 				end if;
 
 			-- Get least-significant byte of the count
-			when STATE_GET_COUNT3 =>
+			when HSTATE_GET_COUNT3 =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
 				if ( gotData_in = '1' ) then
 					-- The count low word low byte will be available on the next clock edge.
 					hostByteCount_next(7 downto 0) <= unsigned(fifoData_io);
 					if ( isWrite = '1' ) then
-						state_next <= STATE_BEGIN_WRITE;
+						hstate_next <= HSTATE_BEGIN_WRITE;
 					else
-						state_next <= STATE_READ;
+						hstate_next <= HSTATE_READ;
 					end if;
 				end if;
 
 			-- Give FX2LP a chance to put fifoData_io in hi-Z state
-			when STATE_BEGIN_WRITE =>
+			when HSTATE_BEGIN_WRITE =>
 				fifoAddr_out <= IN_FIFO;  -- writing to FX2LP
 				fifoOp       <= FIFO_NOP;
 				isAligned_next <= not(hostByteCount(0) or hostByteCount(1) or hostByteCount(2) or hostByteCount(3) or hostByteCount(4) or hostByteCount(5) or hostByteCount(6) or hostByteCount(7) or hostByteCount(8));
-				state_next   <= STATE_WRITE;
+				hstate_next  <= HSTATE_WRITE;
 
 			-- Read from registers or RAM and write to FIFO
-			when STATE_WRITE =>
+			when HSTATE_WRITE =>
 				fifoAddr_out <= IN_FIFO;  -- writing to FX2LP
 				if ( gotRoom_in = '1' ) then
 					-- The state of fifoData_io will be pushed to the FIFO on the next clock edge.
@@ -321,9 +316,9 @@ begin
 					hostByteCount_next  <= hostByteCount - 1;  -- dec count by default
 					if ( hostByteCount = 1 ) then
 						if ( isAligned = '1' ) then
-							state_next <= STATE_END_WRITE_ALIGNED;  -- don't assert pktEnd
+							hstate_next <= HSTATE_END_WRITE_ALIGNED;  -- don't assert pktEnd
 						else
-							state_next <= STATE_END_WRITE_NONALIGNED;  -- assert pktEnd to commit small packet
+							hstate_next <= HSTATE_END_WRITE_NONALIGNED;  -- assert pktEnd to commit small packet
 						end if;
 					end if;
 					case regAddr is
@@ -332,7 +327,7 @@ begin
 								-- Even byte - we need to get a new word from memctrl
 								fifoOp              <= FIFO_NOP;          -- insert wait state
 								hostByteCount_next  <= hostByteCount;     -- stop the countdown
-								state_next          <= STATE_WRITE_WAIT;  -- wait until memctrl read has finished
+								hstate_next         <= HSTATE_WRITE_WAIT;  -- wait until memctrl read has finished
 								hostMemOp           <= MEM_READ;          -- start memctrl reading...
 							else
 								-- Odd byte - use MSB of previously-read word
@@ -346,7 +341,7 @@ begin
 						when "011" =>
 							fifoData_io <= hostAddr(7 downto 0);    -- get addr low byte
 						when "100" =>
-							fifoData_io <= "00000" & mdIsLooping & r4(1 downto 0);
+							fifoData_io <= "00000" & mdHasYielded & r4(1 downto 0);
 						when "101" =>
 							fifoData_io <= brkEnabled & brkAddr(22 downto 16);  -- get addr high byte
 						when "110" =>
@@ -359,13 +354,13 @@ begin
 				end if;
 
 			-- Wait until the RAM read completes
-			when STATE_WRITE_WAIT =>
+			when HSTATE_WRITE_WAIT =>
 				fifoAddr_out <= IN_FIFO;  -- writing to FX2LP
 				if ( memBusy = '1' ) then
-					state_next <= STATE_WRITE_WAIT;  -- loopback
-					fifoOp     <= FIFO_NOP;  -- insert wait state
+					hstate_next <= HSTATE_WRITE_WAIT;  -- loopback
+					fifoOp      <= FIFO_NOP;  -- insert wait state
 				else
-					state_next         <= STATE_WRITE;
+					hstate_next        <= HSTATE_WRITE;
 					fifoOp             <= FIFO_WRITE;
 					hostAddr_next      <= std_logic_vector(unsigned(hostAddr) + 1);
 					fifoData_io        <= memOutData(15 downto 8);
@@ -373,27 +368,27 @@ begin
 				end if;
 				
 			-- The FIFO write ends on a block boundary, so no pktEnd assertion
-			when STATE_END_WRITE_ALIGNED =>
+			when HSTATE_END_WRITE_ALIGNED =>
 				fifoAddr_out <= IN_FIFO;   -- writing to FX2LP
 				fifoOp       <= FIFO_NOP;
 				pktEnd_out   <= '1';       -- inactive: aligned write, don't commit early.
-				state_next   <= STATE_IDLE;
+				hstate_next  <= HSTATE_IDLE;
 
 			-- The FIFO write does not end on a block boundary, so we must assert pktEnd
-			when STATE_END_WRITE_NONALIGNED =>
+			when HSTATE_END_WRITE_NONALIGNED =>
 				fifoAddr_out <= IN_FIFO;   -- writing to FX2LP
 				fifoOp       <= FIFO_NOP;
 				pktEnd_out   <= '0';       -- active: FPGA commits the short packet.
-				state_next   <= STATE_IDLE;
+				hstate_next  <= HSTATE_IDLE;
 
 			-- Read from FIFO and write to registers or RAM
-			when STATE_READ =>
+			when HSTATE_READ =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
 				if ( gotData_in = '1' ) then
 					-- There is a data byte available on fifoData_io.
 					hostByteCount_next  <= hostByteCount - 1;
 					if ( hostByteCount = 1 ) then
-						state_next <= STATE_IDLE;
+						hstate_next <= HSTATE_IDLE;
 					end if;
 					case regAddr is
 						when "000" =>
@@ -406,7 +401,7 @@ begin
 								hostData_next(7 downto 0) <= fifoData_io;   -- remember MSB
 								hostByteCount_next <= hostByteCount;        -- don't decrement count
 								hostMemOp          <= MEM_WRITE;            -- ask memctrl to write hostData to hostAddr
-								state_next         <= STATE_READ_WAIT;      -- and wait until it has finished
+								hstate_next        <= HSTATE_READ_WAIT;      -- and wait until it has finished
 							end if;
 							selectByte_next <= not(selectByte);
 						when "001" =>
@@ -428,180 +423,157 @@ begin
 				end if;
 
 			-- Wait until the RAM write completes
-			when STATE_READ_WAIT =>
+			when HSTATE_READ_WAIT =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
 				if ( memBusy = '1' ) then
-					state_next    <= STATE_READ_WAIT;  -- loopback
+					hstate_next   <= HSTATE_READ_WAIT;  -- loopback
 					fifoOp        <= FIFO_NOP;  -- insert wait state
 				else
-					state_next    <= STATE_READ;
+					hstate_next   <= HSTATE_READ;
 					fifoOp        <= FIFO_READ;
 					hostAddr_next <= std_logic_vector(unsigned(hostAddr) + 1);
 					hostByteCount_next <= hostByteCount - 1;
 					if ( hostByteCount = 1 ) then
-						state_next <= STATE_IDLE;  -- This was the final word
+						hstate_next <= HSTATE_IDLE;  -- This was the final word
 					end if;
 				end if;
 		end case;
 	end process;
-
-	-- Bus arbitration state machine
-	process(mstate, mdReadSync, mdWriteSync, mdReg00Sync, mdReg01Sync, mdReg03Sync, mdLDSW_in, mdDataSync, sevenSegData) begin
-		mdMemOp <= MEM_NOP;
-		sevenSegData_next <= sevenSegData;
-		sdLoad <= '0';
-		case mstate is
-			when MSTATE_IDLE =>
-				if ( mdReadSync = '1' ) then
-					mstate_next <= MSTATE_MEM_READ;
-				elsif ( mdWriteSync = '1' ) then
-					mstate_next <= MSTATE_MEM_WRITE;
-				elsif ( mdReg01Sync = '1' ) then
-					mstate_next <= MSTATE_REG01_WRITE;
-				elsif ( mdReg03Sync = '1' and mdLDSW_in = '0' ) then
-					mstate_next <= MSTATE_REG03_WRITE;
-				else
-					mstate_next <= MSTATE_IDLE;
-				end if;
-
-			-- Memory read
-			when MSTATE_MEM_READ =>
-				mdMemOp <= MEM_READ;
-				mstate_next <= MSTATE_WAIT_READ;
-			when MSTATE_WAIT_READ =>
-				if ( mdReadSync = '1' ) then
-					mstate_next <= MSTATE_WAIT_READ;
-				else
-					mstate_next <= MSTATE_IDLE;
-				end if;
-
-			-- Memory write
-			when MSTATE_MEM_WRITE =>
-				mdMemOp <= MEM_WRITE;
-				mstate_next <= MSTATE_WAIT_WRITE;
-			when MSTATE_WAIT_WRITE =>
-				if ( mdWriteSync = '1' ) then
-					mstate_next <= MSTATE_WAIT_WRITE;
-				else
-					mstate_next <= MSTATE_IDLE;
-				end if;
-
-			-- Register 01 write
-			when MSTATE_REG01_WRITE =>
-				if ( mdReg01Sync = '1' ) then
-					mstate_next <= MSTATE_REG01_WRITE;
-				else
-					sevenSegData_next <= mdDataSync;
-					mstate_next <= MSTATE_IDLE;
-				end if;
-
-			-- Register 03 write
-			when MSTATE_REG03_WRITE =>
-				if ( mdReg03Sync = '1' ) then
-					mstate_next <= MSTATE_REG03_WRITE;
-				else
-					sdLoad <= '1';
-					mstate_next <= MSTATE_IDLE;
-				end if;
-		end case;
-	end process;
-
-	-- Host communication state machine
-	process(hstate, mdReg00Sync, r4) begin
-		hstate_next <= hstate;
-		mdOpcode <= OPCODE_BRA;  -- "bra.s -2"
-		mdIsLooping <= '0';
-		case hstate is
-			when HSTATE_IDLE =>
-				mdOpcode <= OPCODE_RTS;  -- "rts" by default
-				if ( r4(FLAG_PAUSE) = '1' and mdReg00Sync = '0' ) then
-					hstate_next <= HSTATE_WAIT_LOOPING;
-				end if;
-			when HSTATE_WAIT_LOOPING =>
-				if ( mdReg00Sync = '1' ) then
-					hstate_next <= HSTATE_ACK_LOOPING;
-				end if;
-			when HSTATE_ACK_LOOPING =>
-				mdIsLooping <= '1';
-				if ( r4(FLAG_PAUSE) = '0' and mdReg00Sync = '0' ) then
-					hstate_next <= HSTATE_IDLE;
-				end if;
-		end case;
-	end process;
-
-	-- Mop up all the unused signals to prevent synthesis warnings
-	sseg_out(7) <=
-		flagA_in and int0_in and r4(3) and r4(4) and r4(5) and r4(6) and r4(7);
-	led_out <= "0000" & not(sdCD_in) & r4(2 downto 0);
-
-	sdCS_out <= not r4(4);  -- TODO: map into 68000 I/O
-	
-	-- Outputs to MegaDrive
-	mdReset <= not(r4(FLAG_RESET));  -- Keep MD in reset unless sw(0) is on.
-	mdReset_out <= mdReset;
-
-	-- Unsynchronised strobes for accesses to RAM and registers
-	mdRead <= not(mdOE_in) and not(mdAddr_in(22));  -- Reads to cart & expansion address space.
-	mdWrite <= not(mdLDSW_in) and not (mdAddr_in(22));  -- Writes to cart & expansion address space.
-	mdReg00 <=
-		'1' when mdAddr_in = IO_ADDR & x"0" and mdOE_in = '0'  -- read 0xA13000
-		else '0';
-	mdReg01 <=
-		'1' when mdAddr_in = IO_ADDR & x"1" and mdLDSW_in = '0'  -- write 0xA13002
-		else '0';
-	mdReg02 <=
-		'1' when mdAddr_in = IO_ADDR & x"2" and mdOE_in = '0'  -- read 0xA13004
-		else '0';
-	mdReg03 <=
-		'1' when mdAddr_in = IO_ADDR & x"3" -- read/write 0xA13006
-		else '0';
-
-	-- The actual value to write on the data bus, and whether or not to drive it
-	mdDataOut <=
-		mdOpcode when mdReg00Sync = '1' else
-		x"000" & "00" & sdBusy & sdCD_in when mdReg02Sync = '1' else
-		x"00" & sdRecvData when mdReg03Sync = '1' and mdOE_in = '0' else
-		OPCODE_ILLEGAL when mdAddr_in = brkAddr and brkEnabled = '1' else
-		memOutData;
-	mdDriveBus <= mdReadSync or mdReg00Sync or mdReg02Sync;
-	
-	-- Drive bus & buffers. Must use same signal for muxing mdData_io as for mdBufDir_out
-	mdBufOE_out <= '0';  -- Level converters always on (pulled up during FPGA programming)
-	mdBufDir_out <= mdDriveBus;  -- Drive data bus only when MD reading from us.
-	mdData_io <=
-		mdDataOut when mdDriveBus = '1' else
-		(others=>'Z');  -- Do not drive data bus
-
-	-- Host owns the memory bus when MegaDrive is in RESET and also when it's looping
-	hostOwnsMemory <= mdReset or mdIsLooping;
-	
-	-- Address and command for memctrl
-	memAddr <=
-		hostAddr when hostOwnsMemory = '1' else
-		mdAddr_in;
-
-	memInData <=
-		hostData when hostOwnsMemory = '1' else		
-		mdDataSync;
-
-	memOp <=
-		hostMemOp when hostOwnsMemory = '1' else
-		mdMemOp;
-
-	-- Debug lines
-	jc2_out <= mdReg00;
-	jc7_out <= mdReg01;
-		
-	-- Memory controller assignments
-	memReset  <= reset_in or not clk96Valid;
-	ramLB_out <= '0';  -- Never do byte operations
-	ramUB_out <= '0';
 
 	-- Breakout fifoOp
 	sloe_out <= fifoOp(0);
 	slrd_out <= fifoOp(1);
 	slwr_out <= fifoOp(2);
 
+	
+	------------------------------------------------------------------------------------------------
+	-- M68K state machine
+	process(
+		mstate,
+		mdSyncOE,
+		mdSyncWE,
+		mdAccessMem,
+		mdAccessIO,
+		mdBeginRead,
+		mdBeginWrite,
+		mdMemOp,
+		ssData,
+		mdData_io,
+		memOutData,
+		mdAddr_in,
+		brkAddr,
+		brkEnabled,
+		mdOpcode
+	)
+	begin
+		mstate_next <= mstate;
+		mdMemOp_next <= MEM_NOP;
+		ssData_next <= ssData;
+		mdReadData <= (others => '0');
+		case mstate is
+			when MSTATE_IDLE =>
+				if ( mdAccessMem = '1' ) then
+					if ( mdBeginRead = '1' ) then
+						mstate_next <= MSTATE_WAIT_READ;
+						mdMemOp_next <=	MEM_READ;
+					elsif ( mdBeginWrite = '1' ) then
+						mstate_next <= MSTATE_WAIT_WRITE;
+						mdMemOp_next <= MEM_WRITE;
+					end if;
+				elsif ( mdAccessIO = '1' ) then
+					if ( mdBeginRead = '1' ) then
+						mstate_next <= MSTATE_WAIT_READ;
+						mdMemOp_next <=	MEM_READ;
+					elsif ( mdBeginWrite = '1' ) then
+						mstate_next <= MSTATE_WAIT_WRITE;
+						case mdAddr_in(1 downto 0) is
+							when "01" =>
+								ssData_next <= mdData_io;
+							when others =>
+						end case;
+					end if;
+				end if;
+
+			when MSTATE_WAIT_READ =>
+				if ( mdAccessMem = '1' ) then
+					if ( mdAddr_in = brkAddr and brkEnabled = '1' ) then
+						mdReadData <= OPCODE_ILLEGAL;
+					else
+						mdReadData <= memOutData;
+					end if;
+				elsif ( mdAccessIO = '1' ) then
+					case mdAddr_in(1 downto 0) is
+						when "00" =>
+							mdReadData <= mdOpcode;
+						when others =>
+							mdReadData <= x"DEAD";
+					end case;
+				end if;
+				if ( mdSyncOE = '0' ) then
+					mstate_next <= MSTATE_IDLE;
+				end if;
+
+			when MSTATE_WAIT_WRITE =>
+				if ( mdSyncWE = '0' ) then
+					mstate_next <= MSTATE_IDLE;
+				end if;
+		end case;
+	end process;
+
+	
+	------------------------------------------------------------------------------------------------
+	-- Arbitration state machine
+	process(
+		astate, r4, mdSyncOE, mdAccessIO,
+		mdAddr_in, mdData_io, mdMemOp,
+		hostAddr, hostData, hostMemOp
+	)
+	begin
+		astate_next <= astate;
+		mdOpcode <= OPCODE_BRA;  -- "bra.s -2"
+		mdHasYielded <= '0';
+		memAddr <= mdAddr_in;
+		memInData <= mdData_io;
+		memOp <= mdMemOp;
+		case astate is
+			when ASTATE_IDLE =>
+				mdOpcode <= OPCODE_RTS;  -- "rts" by default
+				if ( r4(FLAG_RUN) = '0' ) then
+					astate_next <= ASTATE_RESET;
+				elsif ( r4(FLAG_PAUSE) = '1' and mdSyncOE = '0' ) then
+					astate_next <= ASTATE_WAIT_LOOPING;
+				end if;
+
+			-- The 68k is in RESET, so the host interface has free reign
+			when ASTATE_RESET =>
+				mdHasYielded <= '1';
+				memAddr <= hostAddr;
+				memInData <= hostData;
+				memOp <= hostMemOp;
+				if ( r4(FLAG_RUN) = '1' ) then
+					astate_next <= ASTATE_IDLE;
+				end if;
+
+			-- The we've started serving bra.s -2 at reg00, wait until the 68k accesses it
+			when ASTATE_WAIT_LOOPING =>
+				if ( mdSyncOE = '1' and mdAccessIO = '1' and mdAddr_in(1 downto 0) = "00" ) then
+					astate_next <= ASTATE_ACK_LOOPING;
+				end if;
+
+			-- The 68k is looping at reg00, so host interface has free reign
+			when ASTATE_ACK_LOOPING =>
+				mdHasYielded <= '1';
+				memAddr <= hostAddr;
+				memInData <= hostData;
+				memOp <= hostMemOp;
+				if ( r4(FLAG_PAUSE) = '0' and mdSyncOE = '0' ) then
+					astate_next <= ASTATE_IDLE;
+				end if;
+		end case;
+	end process;
+
+	
+	------------------------------------------------------------------------------------------------
 	-- Double the IFCLK to get 96MHz
 	clockGenerator: entity work.ClockGenerator
 		port map (
@@ -612,7 +584,12 @@ begin
 			CLK0_OUT   => clk48        -- buffered IFCLK
 		);
 
+	
+	------------------------------------------------------------------------------------------------
 	-- Generate signals for driving the CellularRAM in synchronous mode @48MHz
+	memReset  <= reset_in or not clk96Valid;
+	ramLB_out <= '0';  -- Never do byte operations
+	ramUB_out <= '0';
 	memoryController: entity work.MemoryController(Behavioural)
 		port map(
 			-- Internal interface
@@ -637,27 +614,44 @@ begin
 			nOE           => ramOE_out     -- Output Enable
 		);
 
-	-- Display the RAM data
-	sevenSeg : entity work.SevenSeg
+	
+	------------------------------------------------------------------------------------------------
+	-- Generate signals for the 68000 bus interface and UMDKv2 buffers
+	mdReset <= not(r4(FLAG_RUN));
+	mdReset_out <= mdReset;
+	businterface: entity work.businterface
 		port map(
-			clk    => clk48,
-			data   => sevenSegData,
-			segs   => sseg_out(6 downto 0),
-			anodes => anode_out
+			reset_in         => reset_in,
+			clk_in           => clk48,
+
+			-- External connections
+			mdBufOE_out      => mdBufOE_out,
+			mdBufDir_out     => mdBufDir_out,
+			mdOE_in          => mdOE_in,
+			mdLDSW_in        => mdLDSW_in,
+			mdAddr_in        => mdAddr_in(22 downto 2),
+			mdData_io        => mdData_io,
+
+			-- Internal connections
+			mdBeginRead_out  => mdBeginRead,
+			mdBeginWrite_out => mdBeginWrite,
+			mdAccessMem_out  => mdAccessMem,
+			mdAccessIO_out   => mdAccessIO,
+			mdSyncOE_out     => mdSyncOE,
+			mdSyncWE_out     => mdSyncWE,
+			mdData_in        => mdReadData
 		);
 
-	serialio: entity work.serialio
+	
+	------------------------------------------------------------------------------------------------
+	-- Drive the 7-seg display
+	sseg_out(7) <= r4(2) and r4(3) and r4(4) and r4(5) and r4(6) and r4(7);
+	sevenseg : entity work.sevenseg
 		port map(
-			reset_in  => reset_in,
-			clk_in    => clk48,
-			data_in   => mdDataSync(7 downto 0),
-			data_out  => sdRecvData,
-			load_in   => sdLoad,
-			turbo_in  => r4(3),  -- TODO: map into 68000 I/O
-			busy_out  => sdBusy,
-			sData_out => sdDI_out,
-			sData_in  => sdDO_in,
-			sClk_out  => sdClk_out
+			clk    => clk48,
+			data   => ssData,
+			segs   => sseg_out(6 downto 0),
+			anodes => anode_out
 		);
 
 end Behavioural;
