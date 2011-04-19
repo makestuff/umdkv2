@@ -165,6 +165,10 @@ architecture Behavioural of TopLevel is
 	constant OPCODE_ILLEGAL   : std_logic_vector(15 downto 0) := x"4AFC";
 	constant OPCODE_RTS       : std_logic_vector(15 downto 0) := x"4E75";
 	constant OPCODE_BRA       : std_logic_vector(15 downto 0) := x"60FE";
+	constant MDREG_YIELDBUS   : std_logic_vector(1 downto 0) := "00";
+	constant MDREG_RAMPAGE    : std_logic_vector(1 downto 0) := "01";
+	constant MDREG_SERDATA    : std_logic_vector(1 downto 0) := "10";
+	constant MDREG_SERCTRL    : std_logic_vector(1 downto 0) := "11";
 
 begin
 
@@ -486,8 +490,12 @@ begin
 					elsif ( mdBeginWrite = '1' ) then
 						mstate_next <= MSTATE_WAIT_WRITE;
 						case mdAddr_in(1 downto 0) is
-							when "01" =>
+							when MDREG_YIELDBUS =>
+								-- Writing to YIELDBUS updates ssData
 								ssData_next <= mdData_io;
+							when MDREG_RAMPAGE =>
+							when MDREG_SERDATA =>
+							when MDREG_SERCTRL =>
 							when others =>
 						end case;
 					end if;
@@ -502,8 +510,12 @@ begin
 					end if;
 				elsif ( mdAccessIO = '1' ) then
 					case mdAddr_in(1 downto 0) is
-						when "00" =>
+						when MDREG_YIELDBUS =>
+							-- Reading from YIELDBUS gives the 68k opcode for rts or bra.s -2
 							mdReadData <= mdOpcode;
+						when MDREG_RAMPAGE =>
+						when MDREG_SERDATA =>
+						when MDREG_SERCTRL =>
 						when others =>
 							mdReadData <= x"DEAD";
 					end case;
