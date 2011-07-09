@@ -4,7 +4,9 @@
 
 yieldBus	= 0xA13000
 command		= 0x400400
-saveBase	= command+2
+address		= command + 4*1
+length		= command + 4*2
+saveBase	= command + 4*3
 d0Save		= saveBase + 4*0
 d1Save		= saveBase + 4*1
 d2Save		= saveBase + 4*2
@@ -19,11 +21,11 @@ a2Save		= saveBase + 4*10
 a3Save		= saveBase + 4*11
 a4Save		= saveBase + 4*12
 a5Save		= saveBase + 4*13
-a6Save		= saveBase + 4*14
-a7Save		= saveBase + 4*15
-pcSave		= saveBase + 4*16
-srSave		= saveBase + 4*17
-ramSave		= saveBase + 4*17 + 2
+fpSave		= saveBase + 4*14
+spSave		= saveBase + 4*15
+srSave		= saveBase + 4*16
+pcSave		= saveBase + 4*17
+ramSave		= saveBase + 4*18
 
 CMD_LOOP	= 0
 
@@ -42,17 +44,20 @@ main:
 	move.l	a3, a3Save
 	move.l	a4, a4Save
 	move.l	a5, a5Save
-	move.l	a6, a6Save
-	move.l	a7, a7Save
-	move.l	2(ssp), pcSave
-	move.w	0(ssp), srSave
-	and.w	#0x7FFF, srSave		| clear TRACE bit
+	move.l	fp, fpSave
+	move.l	sp, d0
+	addq.l	#6, d0
+	move.l	d0, spSave		| should look at saved status reg to decide whether to save USP or SSP
+	move.l	2(sp), pcSave
+	move.w	#0x0000, srSave
+	move.w	0(sp), srSave+2
+	and.w	#0x7FFF, srSave+2	| clear TRACE bit
 
 commandLoop:
 	jsr	yieldBus		| offer bus to host
-	move.w	command, d0		| see if host has left us...
+	move.l	command, d0		| see if host has left us...
 	beq.s	commandLoop		| ...a command to execute
-	move.w	#CMD_LOOP, command	| yes...zero command for next loop
+	move.l	#CMD_LOOP, command	| yes...zero command for next loop
 	subq.w	#1, d0			| remove one so jump table can begin at command one rather than zero
 	and.w	#0x07, d0		| mask command to stop random jumps off the end of the jump table
 	asl.w	#2, d0			| multiply by four: the offset is in longwords
@@ -76,41 +81,41 @@ quit:
 	move.l	a3Save, a3
 	move.l	a4Save, a4
 	move.l	a5Save, a5
-	move.l	a6Save, a6
-	move.l	a7Save, a7
-	move.w	srSave, 0(ssp)
-	move.l	pcSave, 2(ssp)
+	move.l	fpSave, a6
+	move.w	srSave+2, 0(sp)
+	move.l	pcSave, 2(sp)
 	rte
 
 step:
-	or.w	#0x8000, srSave		| set TRACE bit
+	or.w	#0x8000, srSave+2	| set TRACE bit
 continue:
 	lea	(quit-continue-2)(pc), a0
-	move.l	a0, (ssp)		| redirect rts
+	move.l	a0, (sp)		| redirect rts
 doNothing:
 	rts
 
-saveRam:
-	move.w	#0x3FFF, d0
-	lea	0xFF0000, a0
+read:
+	move.l	address, a0
 	lea	ramSave, a1
-svCopy:	move.l	(a0)+, (a1)+
-	dbra	d0, svCopy
+copy:	move.l	length, d0
+	asr	#1, d0
+	subq	#1, d0
+rdCopy:	move.w	(a0)+, (a1)+
+	dbra	d0, rdCopy
 	rts
 
-loadRam:
-	move.w	#0x3FFF, d0
+write:
+	move.l	address, a1
 	lea	ramSave, a0
-	lea	0xFF0000, a1
-ldCopy:	move.l	(a0)+, (a1)+
-	dbra	d0, ldCopy
+	move.w	(a0)+, (a1)+
 	rts
+	bra.s	copy
 
 jumpTable:
 	dc.l	step-lda2-2
 	dc.l	continue-lda2-2
-	dc.l	saveRam-lda2-2
-	dc.l	loadRam-lda2-2
+	dc.l	read-lda2-2
+	dc.l	write-lda2-2
 	dc.l	doNothing-lda2-2
 	dc.l	doNothing-lda2-2
 	dc.l	doNothing-lda2-2

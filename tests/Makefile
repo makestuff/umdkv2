@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2009-2010 Chris McClelland
+# Copyright (C) 2011 Chris McClelland
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,16 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-all: FORCE
-	make -C monitor
-	make -C testrom
-	make -C menu
-	make -C example
+ROOT    := $(realpath ../../..)
+DEPS    := 
+TYPE    := exe
+SUBDIRS :=
 
-clean: FORCE
-	make -C monitor clean
-	make -C testrom clean
-	make -C menu clean
-	make -C example clean
-
-FORCE:
+-include $(ROOT)/common/top.mk

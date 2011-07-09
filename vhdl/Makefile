@@ -15,7 +15,7 @@ ifeq ($(PLATFORM),nexys2)
 	FPGA = xc3s1200e-fg320-4
 endif
 
-all: $(TOP_LEVEL).bit
+all: $(TOP_LEVEL).xsvf
 
 load: $(TOP_LEVEL).bit
 	sudo xilprg -c nero:04B4:8613 -b TopLevel.bit

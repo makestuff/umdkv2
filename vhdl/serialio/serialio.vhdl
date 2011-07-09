@@ -92,31 +92,31 @@ begin
 			-- Drive bit on sData, and hold sClk low for four cycles
 			when STATE_SCLK_LOW =>
 				sClk_next <= '0';  -- keep sClk low by default
-				sData_out <= shiftOut(0);
+				sData_out <= shiftOut(7);
 				cycleCount_next <= cycleCount - 1;
 				if ( cycleCount = 0 ) then
 					-- Time to move on to STATE_SCLK_HIGH
 					state_next <= STATE_SCLK_HIGH;
 					sClk_next <= '1';
-					shiftIn_next <= sData_in & shiftIn(6 downto 1);
+					shiftIn_next <= shiftIn(5 downto 0) & sData_in;
 					if ( turbo_in = '1' ) then
 						cycleCount_next <= CLK_24MHz;
 					else
 						cycleCount_next <= CLK_400kHz;
 					end if;
 					if ( bitCount = 0 ) then
-						inReg_next <= sData_in & shiftIn(6 downto 0);
+						inReg_next <= shiftIn(6 downto 0) & sData_in;
 					end if;
 				end if;
 
 			-- Carry on driving bit on sData, hold sClk high for four cycles
 			when STATE_SCLK_HIGH =>
 				sClk_next <= '1';
-				sData_out <= shiftOut(0);
+				sData_out <= shiftOut(7);
 				cycleCount_next <= cycleCount - 1;
 				if ( cycleCount = 0 ) then
 					-- Time to move back to STATE_SCLK_LOW or STATE_WAIT_FOR_DATA
-					shiftOut_next <= "0" & shiftOut(7 downto 1);
+					shiftOut_next <= shiftOut(6 downto 0) & "0";
 					bitCount_next <= bitCount - 1;
 					if ( turbo_in = '1' ) then
 						cycleCount_next <= CLK_24MHz;

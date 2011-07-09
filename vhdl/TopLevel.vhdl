@@ -49,6 +49,13 @@ entity TopLevel is
 		ramUB_out    : out   std_logic;
 		ramWait_in   : in    std_logic;
 
+		-- SD-Card signals
+		sdDO_in      : in    std_logic;  -- Serial data from the SD card
+		sdClk_out    : out   std_logic;  -- Serial clock to the SD card
+		sdDI_out     : out   std_logic;  -- Serial data to the SD card
+		sdCS_out     : out   std_logic;  -- SD card chip select (active-low)
+		sdCD_in      : in    std_logic;  -- SD card detect (low when card inserted)
+
 		-- MegaDrive signals
 		mdReset_out  : out   std_logic;  -- while 'Z', MD stays in RESET; drive low to bring MD out of RESET.
 		mdBufOE_out  : out   std_logic;  -- while 'Z', MD is isolated; drive low to enable all three buffers.
@@ -74,10 +81,12 @@ architecture Behavioural of TopLevel is
 		HSTATE_GET_COUNT3,
 		HSTATE_BEGIN_WRITE,
 		HSTATE_WRITE,
+		HSTATE_WRITE_HOLD,
 		HSTATE_WRITE_WAIT,
 		HSTATE_END_WRITE_ALIGNED,
 		HSTATE_END_WRITE_NONALIGNED,
 		HSTATE_READ,
+		HSTATE_READ_HOLD,
 		HSTATE_READ_WAIT
 	);
 	type MStateType is (
@@ -120,6 +129,7 @@ architecture Behavioural of TopLevel is
 	signal mdMemOp            : std_logic_vector(1 downto 0);
 	signal mdMemOp_next       : std_logic_vector(1 downto 0);
 	signal hostMemOp          : std_logic_vector(1 downto 0);
+	signal hostMemOp_next     : std_logic_vector(1 downto 0);
 	signal memAddr            : std_logic_vector(22 downto 0);
 	signal memInData          : std_logic_vector(15 downto 0);
 	signal memOutData         : std_logic_vector(15 downto 0);
@@ -131,6 +141,15 @@ architecture Behavioural of TopLevel is
 	signal hostData_next      : std_logic_vector(15 downto 0);
 	signal selectByte         : std_logic;
 	signal selectByte_next    : std_logic;
+
+	-- SD card signals
+	signal sdSendData         : std_logic_vector(7 downto 0);
+	signal sdRecvData         : std_logic_vector(7 downto 0);
+	signal sdLoad             : std_logic;
+	signal sdTurbo            : std_logic;
+	signal sdBusy             : std_logic;
+	signal serCtrl            : std_logic_vector(1 downto 0);
+	signal serCtrl_next       : std_logic_vector(1 downto 0);
 
 	-- MegaDrive signals
 	signal mdAccessMem        : std_logic;
@@ -179,7 +198,9 @@ begin
 		if ( reset_in = '1' ) then
 			mstate        <= MSTATE_IDLE;
 			mdMemOp       <= MEM_NOP;
+			hostMemOp     <= MEM_NOP;
 			ssData        <= (others => '0');
+			serCtrl       <= (others => '0');
 			hstate        <= HSTATE_IDLE;
 			hostByteCount <= (others => '0');
 			regAddr       <= (others => '0');
@@ -195,7 +216,9 @@ begin
 		elsif ( clk48'event and clk48 = '1' ) then
 			mstate        <= mstate_next;
 			mdMemOp       <= mdMemOp_next;
+			hostMemOp     <= hostMemOp_next;
 			ssData        <= ssData_next;
+			serCtrl       <= serCtrl_next;
 			hstate        <= hstate_next;
 			hostByteCount <= hostByteCount_next;
 			regAddr       <= regAddr_next;
@@ -231,7 +254,8 @@ begin
 		isWrite,
 		memBusy,
 		memOutData,
-		selectByte
+		selectByte,
+		hostMemOp
 	)
 	begin
 		hstate_next        <= hstate;
@@ -246,7 +270,7 @@ begin
 		brkEnabled_next    <= brkEnabled;       -- keep breakpoint enabled flag unless explicitly updated
 		r4_next            <= r4;
 		fifoData_io        <= (others => 'Z');  -- tristated unless explicitly driven
-		hostMemOp          <= MEM_NOP;          -- memctrl idle by default
+		hostMemOp_next     <= MEM_NOP;          -- memctrl idle by default
 		fifoOp             <= FIFO_READ;        -- read the FX2LP FIFO by default
 		pktEnd_out         <= '1';              -- inactive: FPGA does not commit a short packet.
 
@@ -328,10 +352,10 @@ begin
 						when "000" =>
 							if ( selectByte = '0' ) then
 								-- Even byte - we need to get a new word from memctrl
-								fifoOp              <= FIFO_NOP;          -- insert wait state
-								hostByteCount_next  <= hostByteCount;     -- stop the countdown
-								hstate_next         <= HSTATE_WRITE_WAIT;  -- wait until memctrl read has finished
-								hostMemOp           <= MEM_READ;          -- start memctrl reading...
+								fifoOp             <= FIFO_NOP;          -- insert wait state
+								hostByteCount_next <= hostByteCount;     -- stop the countdown
+								hstate_next        <= HSTATE_WRITE_HOLD; -- wait until memctrl read has finished
+								hostMemOp_next     <= MEM_READ;          -- start memctrl reading...
 							else
 								-- Odd byte - use MSB of previously-read word
 								fifoData_io <= memOutData(7 downto 0);
@@ -356,6 +380,13 @@ begin
 					fifoOp <= FIFO_NOP;
 				end if;
 
+			-- Hold a while...
+			when HSTATE_WRITE_HOLD =>
+				fifoAddr_out   <= IN_FIFO;           -- writing to FX2LP
+				fifoOp         <= FIFO_NOP;          -- insert wait state
+				hstate_next    <= HSTATE_WRITE_WAIT; -- wait until memctrl read has finished
+				hostMemOp_next <= MEM_READ;          -- start memctrl reading...
+			
 			-- Wait until the RAM read completes
 			when HSTATE_WRITE_WAIT =>
 				fifoAddr_out <= IN_FIFO;  -- writing to FX2LP
@@ -403,8 +434,8 @@ begin
 								fifoOp             <= FIFO_NOP;             -- insert wait state
 								hostData_next(7 downto 0) <= fifoData_io;   -- remember MSB
 								hostByteCount_next <= hostByteCount;        -- don't decrement count
-								hostMemOp          <= MEM_WRITE;            -- ask memctrl to write hostData to hostAddr
-								hstate_next        <= HSTATE_READ_WAIT;      -- and wait until it has finished
+								hostMemOp_next     <= MEM_WRITE;            -- ask memctrl to write hostData to hostAddr
+								hstate_next        <= HSTATE_READ_HOLD;     -- and wait until it has finished
 							end if;
 							selectByte_next <= not(selectByte);
 						when "001" =>
@@ -425,6 +456,13 @@ begin
 					end case;
 				end if;
 
+			-- Hold a while...
+			when HSTATE_READ_HOLD =>
+				fifoAddr_out   <= OUT_FIFO;         -- reading from FX2LP
+				fifoOp         <= FIFO_NOP;         -- insert wait state
+				hostMemOp_next <= MEM_WRITE;        -- ask memctrl to write hostData to hostAddr
+				hstate_next    <= HSTATE_READ_WAIT; -- and wait until it has finished
+				
 			-- Wait until the RAM write completes
 			when HSTATE_READ_WAIT =>
 				fifoAddr_out <= OUT_FIFO;  -- reading from FX2LP
@@ -461,18 +499,25 @@ begin
 		mdBeginWrite,
 		mdMemOp,
 		ssData,
+		serCtrl,
 		mdData_io,
 		memOutData,
 		mdAddr_in,
 		brkAddr,
 		brkEnabled,
-		mdOpcode
+		mdOpcode,
+		sdCD_in,
+		sdBusy,
+		sdRecvData
 	)
 	begin
 		mstate_next <= mstate;
 		mdMemOp_next <= MEM_NOP;
 		ssData_next <= ssData;
+		serCtrl_next <= serCtrl;
 		mdReadData <= (others => '0');
+		sdSendData <= (others => '0');
+		sdLoad <= '0';
 		case mstate is
 			when MSTATE_IDLE =>
 				if ( mdAccessMem = '1' ) then
@@ -493,9 +538,12 @@ begin
 							when MDREG_YIELDBUS =>
 								-- Writing to YIELDBUS updates ssData
 								ssData_next <= mdData_io;
-							when MDREG_RAMPAGE =>
 							when MDREG_SERDATA =>
+								sdSendData <= mdData_io(7 downto 0);
+								sdLoad <= '1';
 							when MDREG_SERCTRL =>
+								serCtrl_next <= mdData_io(1 downto 0);
+							when MDREG_RAMPAGE =>
 							when others =>
 						end case;
 					end if;
@@ -513,9 +561,12 @@ begin
 						when MDREG_YIELDBUS =>
 							-- Reading from YIELDBUS gives the 68k opcode for rts or bra.s -2
 							mdReadData <= mdOpcode;
-						when MDREG_RAMPAGE =>
-						when MDREG_SERDATA =>
 						when MDREG_SERCTRL =>
+							-- Reading from SERCTRL gives flags & status
+							mdReadData <= x"000" & not(sdCD_in) & sdBusy & serCtrl;
+						when MDREG_SERDATA =>
+							mdReadData <= x"00" & sdRecvData;
+						when MDREG_RAMPAGE =>
 						when others =>
 							mdReadData <= x"DEAD";
 					end case;
@@ -530,6 +581,9 @@ begin
 				end if;
 		end case;
 	end process;
+
+	sdTurbo <= serCtrl(0);
+	sdCS_out <= not(serCtrl(1));
 
 	
 	------------------------------------------------------------------------------------------------
@@ -654,8 +708,25 @@ begin
 
 	
 	------------------------------------------------------------------------------------------------
+	-- Talk to the SD card
+	serialio: entity work.serialio
+		port map(
+			reset_in  => reset_in,
+			clk_in    => clk48,
+			data_in   => sdSendData,
+			data_out  => sdRecvData,
+			load_in   => sdLoad,
+			turbo_in  => sdTurbo,
+			busy_out  => sdBusy,
+			sData_out => sdDI_out,
+			sData_in  => sdDO_in,
+			sClk_out  => sdClk_out
+		);
+
+	
+	------------------------------------------------------------------------------------------------
 	-- Drive the 7-seg display
-	sseg_out(7) <= r4(2) and r4(3) and r4(4) and r4(5) and r4(6) and r4(7);
+	sseg_out(7) <= r4(2) and r4(3) and r4(4) and r4(5) and r4(6) and r4(7) and sdCD_in;
 	sevenseg : entity work.sevenseg
 		port map(
 			clk    => clk48,
