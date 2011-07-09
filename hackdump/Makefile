@@ -14,23 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-ROOT    := $(realpath ../..)
-DEPS    := fpgalink error argtable2
+ROOT    := $(realpath ../../..)
+DEPS    := fpgalink error
 TYPE    := exe
-SUBDIRS := tests vhdl m68k
-PRE_BUILD := gen_mon
-EXTRA_CC_SRCS := gen_mon/monitor.c
-EXTRA_CLEAN := gen_mon
-LINK_EXTRALIBS_REL := m68k.o
-LINK_EXTRALIBS_DBG := $(LINK_EXTRALIBS_REL)
+SUBDIRS := 
 
 -include $(ROOT)/common/top.mk
-
-MKMON := mkmon/$(PLATFORM)/rel/mkmon$(EXE)
-
-gen_mon: FORCE
-	make -C mkmon rel
-	mkdir -p $@
-	make -C m68k/monitor
-	$(MKMON) m68k/monitor/monitor.bin monitor > $@/monitor.c
-	make -C mkmon clean
