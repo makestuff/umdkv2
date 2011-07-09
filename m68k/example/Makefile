@@ -1,4 +1,4 @@
-TARGET := foo
+TARGET := example
 TOOLS := /home/chris/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
 
 CC_SRCS := $(wildcard *.c)
