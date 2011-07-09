@@ -1,5 +1,5 @@
 TARGET = monitor
-TOOLS = /home/chris/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
+TOOLS = /usr/local/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
 AS_FLAGS = -D -mcpu=68000 -march=68000 --traditional-format --register-prefix-optional
 #-alh
 

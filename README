@@ -1,59 +1,27 @@
 ************************************* USB MegaDrive DevKit v2 **************************************
 
-Not really ready for public consumption. If you're interested, send me a message on GitHub.
+Version 2 of my USB MegaDrive DevKit. See http://vimeo.com/makestuff/umdkv2-01 for a quick tour.
 
 Components:
     pcb          - The Nexys2-based prototype board
     vhdl         - The FPGA behavioural model.
     m68k/monitor - The UMDKv2 68000 monitor.
-    m68k/testrom - Simple ROM used by libumdk unit tests.
+    m68k/testrom - Simple ROM used by unit tests (when I've got them ported).
     m68k/menu    - Placeholder for the SD-card menu ROM.
-    libumdk      - A libusb-based library encapsulating UMDKv2 operations (load, break, step, etc).
-    mdsh         - A libumdk-based shell for interacting with the MegaDrive.
-    util/scripts - Various scripts, to be replaced with direct linkage with the m68k binutils.
-    util/vpatch  - A simple 68000 vector-manipulator.
+    m68k/menu    - Simple example with EclipseIDE launcher
+    scripts      - Various scripts
+    hackdump     - Utility for comparing memory dumps
+    mkmon        - Utility for converting assembled 68k monitor to a C source file
 
-You will also need:
-    makestuff/neopurgo - for programming and communicating with the FPGA
-    makestuff/fx2tools - for loading the neopurgo firmware into the Nexys2's USB controller chip
+Before you can build the project you need to build the Starscream 68000 emulator, which you can
+build using the build-star.sh script.
 
-Furthermore, you will need a functional 68000 cross-assembler. You can build one thus:
-    # This builds a toolchain in $HOME/x-tools/m68k-unknown-elf/
-    cd $HOME
-    sudo apt-get install bison
-    sudo apt-get install flex
-    sudo apt-get install texinfo
-    sudo apt-get install automake
-    sudo apt-get install libtool
-    sudo apt-get install zlib1g-dev
-    wget http://ymorin.is-a-geek.org/download/crosstool-ng/crosstool-ng-1.10.0.tar.bz2
-    bunzip2 -c crosstool-ng-1.10.0.tar.bz2 | tar xf -
-    cd crosstool-ng-1.10.0/
-    ./configure --prefix=$HOME/ct-ng
-    make
-    make install
-    export PATH="${PATH}:$HOME/ct-ng/bin"
-    mkdir $HOME/dev
-    cd $HOME/dev
-    cp ../ct-ng/lib/ct-ng-1.10.0/samples/m68k-unknown-elf/crosstool.config .config
-    ct-ng build
-
-Here's an example mdsh session:
-  load ../m68k/menu/menu.bin    - load menu.bin
-  break 26c;dump                - set breakpoint and dump registers
-  step ...                      - step one instruction at a time
-  cont;dump                     - continue until back at breakpoint
-  step ...
-  disable;cont                  - disable breakpoint and continue
-  load ../../sonic1.bin         - load Sonic 1
-  break b10;dump                - break at vblank routine
-  step ...
-  disable;cont
-  break b10                     - break at vblank again
-  patch fe20 03                 - poke 0x03 at 0xfffe20 (ring count high byte)
-  disable;cont
-  quit
+You will also need a functional 68000 cross-assembler/compiler. You can build one using the
+build-gcc.sh script; it will be installed in /usr/local/x-tools/m68k-unknown-elf. You will also
+need GDB/68k, which you can build with the build-gdb.sh script; it will be installed in
+/usr/local/bin. And finally there are some minor issues with the version of DDD in the Ubuntu repo;
+you can build one from source with the build-ddd.sh script.
 
 Chris McClelland
 
-2011-04-12
+2011-07-09
