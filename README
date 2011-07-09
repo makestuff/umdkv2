@@ -42,6 +42,19 @@ Usage:
     should then be able to do Run->Debug Configurations->GDB Hardware Debugging->example. The config
     assumes you've already started a umdkv2 process (see (D) above).
 
+  The hackdump program can be used to find the offsets of bytes which change from one specific value
+  to another specific value between two memory dumps. In GDB you can dump all 64KiB of the MegaDrive
+  RAM by doing this:
+    dump binary memory dump.bin 0xFF0000 0xFFFFFF
+  You can then compare two such dumps for specific diffs (e.g going from 3 in-game lives down to 2):
+    hackdump/linux/rel/hackdump before.bin after.bin 2 3 
+  You can graph-display locations in DDD like this:
+    graph display *(unsigned short *)0xFFFE12
+  You can set such displays to hexadecimal like this:
+    set radix 16
+  Given an array referenced with unsigned short *p, you can display the first eight items:
+    graph display /x p[0]@8
+
 Chris McClelland
 
 2011-07-09
