@@ -17,7 +17,7 @@
 ROOT    := $(realpath ../..)
 DEPS    := fpgalink error argtable2
 TYPE    := exe
-SUBDIRS := tests vhdl m68k
+SUBDIRS := tests vhdl m68k hackdump
 PRE_BUILD := gen_mon
 EXTRA_CC_SRCS := gen_mon/monitor.c
 EXTRA_CLEAN := gen_mon
