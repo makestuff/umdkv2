@@ -155,38 +155,6 @@ static void writeLong(uint32 value, uint8 *p) {
 	p[0] = value & 0x000000FF;
 }
 
-// Return true if vp is VVVV:PPPP where V and P are hex digits:
-//
-static bool validateVidPid(const char *vp) {
-	int i;
-	char ch;
-	if ( !vp ) {
-		return false;
-	}
-	if ( strlen(vp) != 9 ) {
-		return false;
-	}
-	if ( vp[4] != ':' ) {
-		return false;
-	}
-	for ( i = 0; i < 9; i++ ) {
-		ch = vp[i];
-		if ( i == 4 ) {
-			if ( ch != ':' ) {
-				return false;
-			}
-		} else if (
-			ch < '0' ||
-			(ch > '9' && ch < 'A') ||
-			(ch > 'F' && ch < 'a') ||
-			ch > 'f')
-		{
-			return false;
-		}
-	}
-	return true;
-}
-
 static UMDKStatus setBreakpointAddress(
 	struct FLContext *handle, uint32 address, bool enabled, const char **error)
 {
@@ -717,27 +685,14 @@ struct I68K *umdkCreate(
 	uint8 *romData = NULL;
 	uint32 romLength;
 	uint32 vblankAddress = 0x000000;
-	if ( !validateVidPid(vp) ) {
-		fprintf(stderr, "umdkCreate(): Supplied VID:PID is invalid\n");
-		return NULL;
-	}
-	vid = (uint16)strtoul(vp, NULL, 16);
-	pid = (uint16)strtoul(vp+5, NULL, 16);
-	if ( flOpen(vid, pid, &fpga, NULL) ) {
-		uint16 ivid, ipid;
+	if ( flOpen(vp, &fpga, NULL) ) {
 		int count = 100;
-		if ( !validateVidPid(ivp) ) {
-			fprintf(stderr, "umdkCreate(): Supplied initial VID:PID is invalid\n");
-			return NULL;
-		}
-		ivid = (uint16)strtoul(ivp, NULL, 16);
-		ipid = (uint16)strtoul(ivp+5, NULL, 16);
-		if ( flLoadStandardFirmware(ivid, ipid, vid, pid, &error) ) {
+		if ( flLoadStandardFirmware(ivp, vp, &error) ) {
 			goto cleanup;
 		}
 		do {
 			flSleep(100);
-			if ( flIsDeviceAvailable(vid, pid, &flag, &error) ) {
+			if ( flIsDeviceAvailable(vp, &flag, &error) ) {
 				goto cleanup;
 			}
 			count--;
@@ -746,7 +701,7 @@ struct I68K *umdkCreate(
 			fprintf(stderr, "umdkCreate(): Device did not renumerate properly\n");
 			return NULL;
 		}
-		if ( flOpen(vid, pid, &fpga, &error) ) {
+		if ( flOpen(vp, &fpga, &error) ) {
 			goto cleanup;
 		}
 	}

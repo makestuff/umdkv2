@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # This builds a toolchain in /usr/local/x-tools/m68k-unknown-elf/
+#sudo apt-get install cvs
+#sudo apt-get install lzma
 #sudo apt-get install bison
 #sudo apt-get install flex
 #sudo apt-get install texinfo
@@ -22,4 +24,5 @@ cd ..
 mkdir dev
 cd dev
 cp ../ct-ng/lib/ct-ng-${VERSION}/samples/m68k-unknown-elf/crosstool.config .config
-HOME=/usr/local sudo $HOME/crosstool-ng/ct-ng/bin/ct-ng build
+sudo $HOME/crosstool-ng/ct-ng/bin/ct-ng build
+sudo mv $HOME/x-tools /usr/local

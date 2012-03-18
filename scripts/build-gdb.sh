@@ -15,11 +15,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-if [ ! -e gdb-7.2.tar.bz2 ]; then
-    wget http://ftp.gnu.org/gnu/gdb/gdb-7.2.tar.bz2
+if [ ! -e gdb-7.2a.tar.bz2 ]; then
+    wget http://ftp.gnu.org/gnu/gdb/gdb-7.2a.tar.bz2
 fi
 rm -rf gdb-7.2 gdb-7.2-ms1
-bunzip2 -c gdb-7.2.tar.bz2 | tar xf -
+bunzip2 -c gdb-7.2a.tar.bz2 | tar xf -
 mv gdb-7.2 gdb-7.2-ms1
 
 patch gdb-7.2-ms1/gdb/remote.c <<EOF

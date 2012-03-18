@@ -22,6 +22,13 @@ need GDB/68k, which you can build with the build-gdb.sh script; it will be insta
 /usr/local/bin. And finally there are some minor issues with the version of DDD in the Ubuntu repo;
 you can build one from source with the build-ddd.sh script.
 
+Once all the prerequisites are in place, build with:
+
+  make MACHINE=i686 deps
+
+The resulting i686 binaries will work on i686 and x86_64 machines. Building native x86_64 binaries
+will almost certainly not work.
+
 Usage:
   A) Load FX2 firmware & configure FPGA:
     sudo linux/rel/umdkv2 -t umdk -i 04B4:8613 -v fffe:0100 -x vhdl/TopLevel.xsvf
