@@ -21,7 +21,6 @@ use ieee.numeric_std.all;
 
 entity TopLevel is
 	port(
-		reset_in     : in    std_logic;
 		ifclk_in     : in    std_logic;
 
 		-- Data & control from the FX2
@@ -63,11 +62,7 @@ entity TopLevel is
 		mdOE_in      : in    std_logic;  -- active low output enable: asserted when MD reads.
 		mdLDSW_in    : in    std_logic;  -- active low output enable: asserted when MD writes.
 		mdAddr_in    : in    std_logic_vector(22 downto 0);
-		mdData_io    : inout std_logic_vector(15 downto 0);
-
-		-- Onboard peripherals
-		sseg_out     : out   std_logic_vector(7 downto 0);
-		anode_out    : out   std_logic_vector(3 downto 0)
+		mdData_io    : inout std_logic_vector(15 downto 0)
 	);
 end TopLevel;
 
@@ -100,75 +95,6 @@ architecture Behavioural of TopLevel is
 		ASTATE_WAIT_LOOPING,
 		ASTATE_ACK_LOOPING
 	);
-	
-	-- FSM state & clocks
-	signal hstate             : HStateType; -- host interface state
-	signal hstate_next        : HStateType;
-	signal mstate             : MStateType; -- m68k interface state
-	signal mstate_next        : MStateType;
-	signal astate             : AStateType; -- arbitration state
-	signal astate_next        : AStateType;
-	signal clk48              : std_logic;
-	signal clk96              : std_logic;
-	signal clk96Valid         : std_logic;
-
-	-- FX2LP register read/write
-	signal fifoOp             : std_logic_vector(2 downto 0);
-	signal regAddr            : std_logic_vector(2 downto 0);  -- up to seven bits available
-	signal regAddr_next       : std_logic_vector(2 downto 0);  -- up to seven bits available
-	signal isWrite            : std_logic;
-	signal isWrite_next       : std_logic;
-	signal isAligned          : std_logic;
-	signal isAligned_next     : std_logic;
-	signal hostByteCount      : unsigned(31 downto 0);  -- Read/Write count
-	signal hostByteCount_next : unsigned(31 downto 0);  -- Read/Write count
-	signal r4, r4_next        : std_logic_vector(7 downto 0);
-
-	-- Memory read/write
-	signal memOp              : std_logic_vector(1 downto 0);
-	signal mdMemOp            : std_logic_vector(1 downto 0);
-	signal mdMemOp_next       : std_logic_vector(1 downto 0);
-	signal hostMemOp          : std_logic_vector(1 downto 0);
-	signal hostMemOp_next     : std_logic_vector(1 downto 0);
-	signal memAddr            : std_logic_vector(22 downto 0);
-	signal memInData          : std_logic_vector(15 downto 0);
-	signal memOutData         : std_logic_vector(15 downto 0);
-	signal memBusy            : std_logic;
-	signal memReset           : std_logic;
-	signal hostAddr           : std_logic_vector(22 downto 0);
-	signal hostAddr_next      : std_logic_vector(22 downto 0);
-	signal hostData           : std_logic_vector(15 downto 0);
-	signal hostData_next      : std_logic_vector(15 downto 0);
-	signal selectByte         : std_logic;
-	signal selectByte_next    : std_logic;
-
-	-- SD card signals
-	signal sdSendData         : std_logic_vector(7 downto 0);
-	signal sdRecvData         : std_logic_vector(7 downto 0);
-	signal sdLoad             : std_logic;
-	signal sdTurbo            : std_logic;
-	signal sdBusy             : std_logic;
-	signal serCtrl            : std_logic_vector(1 downto 0);
-	signal serCtrl_next       : std_logic_vector(1 downto 0);
-
-	-- MegaDrive signals
-	signal mdAccessMem        : std_logic;
-	signal mdAccessIO         : std_logic;
-	signal mdBeginRead        : std_logic;
-	signal mdBeginWrite       : std_logic;
-	signal mdSyncOE           : std_logic;
-	signal mdSyncWE           : std_logic;
-	signal mdHasYielded       : std_logic;
-	signal mdReadData         : std_logic_vector(15 downto 0);
-	signal mdOpcode           : std_logic_vector(15 downto 0);
-	signal brkAddr            : std_logic_vector(22 downto 0);
-	signal brkAddr_next       : std_logic_vector(22 downto 0);
-	signal brkEnabled         : std_logic;
-	signal brkEnabled_next    : std_logic;
-
-	-- 7-seg display
-	signal ssData             : std_logic_vector(15 downto 0);
-	signal ssData_next        : std_logic_vector(15 downto 0);
 
 	-- Constants
 	constant MEM_READ         : std_logic_vector(1 downto 0) := "11";   -- read, req
@@ -189,35 +115,82 @@ architecture Behavioural of TopLevel is
 	constant MDREG_SERDATA    : std_logic_vector(1 downto 0) := "10";
 	constant MDREG_SERCTRL    : std_logic_vector(1 downto 0) := "11";
 
+	-- FSM state & clocks
+	signal hstate             : HStateType := HSTATE_IDLE; -- host interface state
+	signal hstate_next        : HStateType := HSTATE_IDLE;
+	signal mstate             : MStateType := MSTATE_IDLE; -- m68k interface state
+	signal mstate_next        : MStateType := MSTATE_IDLE;
+	signal astate             : AStateType := ASTATE_IDLE; -- arbitration state
+	signal astate_next        : AStateType := ASTATE_IDLE;
+	signal clk48              : std_logic;
+	signal clk96              : std_logic;
+	signal clk96Valid         : std_logic;
+
+	-- FX2LP register read/write
+	signal fifoOp             : std_logic_vector(2 downto 0);
+	signal regAddr            : std_logic_vector(2 downto 0) := "000";  -- up to seven bits available
+	signal regAddr_next       : std_logic_vector(2 downto 0) := "000";  -- up to seven bits available
+	signal isWrite            : std_logic := '0';
+	signal isWrite_next       : std_logic := '0';
+	signal isAligned          : std_logic := '0';
+	signal isAligned_next     : std_logic := '0';
+	signal hostByteCount      : unsigned(31 downto 0) := x"00000000";  -- Read/Write count
+	signal hostByteCount_next : unsigned(31 downto 0) := x"00000000";  -- Read/Write count
+	signal r4                 : std_logic_vector(1 downto 0) := "00";
+	signal r4_next            : std_logic_vector(1 downto 0) := "00";
+
+	-- Memory read/write
+	signal memOp              : std_logic_vector(1 downto 0);
+	signal mdMemOp            : std_logic_vector(1 downto 0) := MEM_NOP;
+	signal mdMemOp_next       : std_logic_vector(1 downto 0) := MEM_NOP;
+	signal hostMemOp          : std_logic_vector(1 downto 0) := MEM_NOP;
+	signal hostMemOp_next     : std_logic_vector(1 downto 0) := MEM_NOP;
+	signal memAddr            : std_logic_vector(22 downto 0);
+	signal memInData          : std_logic_vector(15 downto 0);
+	signal memOutData         : std_logic_vector(15 downto 0);
+	signal memBusy            : std_logic;
+	signal memReset           : std_logic;
+	signal hostAddr           : std_logic_vector(22 downto 0) := "000" & x"00000";
+	signal hostAddr_next      : std_logic_vector(22 downto 0) := "000" & x"00000";
+	signal hostData           : std_logic_vector(15 downto 0) := x"0000";
+	signal hostData_next      : std_logic_vector(15 downto 0) := x"0000";
+	signal selectByte         : std_logic := '0';
+	signal selectByte_next    : std_logic := '0';
+
+	-- SD card signals
+	signal sdSendData         : std_logic_vector(7 downto 0);
+	signal sdRecvData         : std_logic_vector(7 downto 0);
+	signal sdLoad             : std_logic;
+	signal sdTurbo            : std_logic;
+	signal sdBusy             : std_logic;
+	signal serCtrl            : std_logic_vector(1 downto 0) := "00";
+	signal serCtrl_next       : std_logic_vector(1 downto 0) := "00";
+
+	-- MegaDrive signals
+	signal mdAccessMem        : std_logic;
+	signal mdAccessIO         : std_logic;
+	signal mdBeginRead        : std_logic;
+	signal mdBeginWrite       : std_logic;
+	signal mdSyncOE           : std_logic;
+	signal mdSyncWE           : std_logic;
+	signal mdHasYielded       : std_logic;
+	signal mdReadData         : std_logic_vector(15 downto 0);
+	signal mdOpcode           : std_logic_vector(15 downto 0);
+	signal brkAddr            : std_logic_vector(22 downto 0) := "000" & x"00000";
+	signal brkAddr_next       : std_logic_vector(22 downto 0) := "000" & x"00000";
+	signal brkEnabled         : std_logic := '0';
+	signal brkEnabled_next    : std_logic := '0';
+
 begin
 
 	------------------------------------------------------------------------------------------------
 	-- All change!
-	process(clk48, reset_in)
+	process(clk48)
 	begin
-		if ( reset_in = '1' ) then
-			mstate        <= MSTATE_IDLE;
-			mdMemOp       <= MEM_NOP;
-			hostMemOp     <= MEM_NOP;
-			ssData        <= (others => '0');
-			serCtrl       <= (others => '0');
-			hstate        <= HSTATE_IDLE;
-			hostByteCount <= (others => '0');
-			regAddr       <= (others => '0');
-			isWrite       <= '0';
-			selectByte    <= '0';
-			isAligned     <= '0';
-			hostData      <= (others => '0');
-			hostAddr      <= (others => '0');
-			brkAddr       <= (others => '0');
-			brkEnabled    <= '0';
-			r4            <= (others => '0');
-			astate        <= ASTATE_IDLE;
-		elsif ( clk48'event and clk48 = '1' ) then
+		if ( clk48'event and clk48 = '1' ) then
 			mstate        <= mstate_next;
 			mdMemOp       <= mdMemOp_next;
 			hostMemOp     <= hostMemOp_next;
-			ssData        <= ssData_next;
 			serCtrl       <= serCtrl_next;
 			hstate        <= hstate_next;
 			hostByteCount <= hostByteCount_next;
@@ -368,7 +341,7 @@ begin
 						when "011" =>
 							fifoData_io <= hostAddr(7 downto 0);    -- get addr low byte
 						when "100" =>
-							fifoData_io <= "00000" & mdHasYielded & r4(1 downto 0);
+							fifoData_io <= "00000" & mdHasYielded & r4;
 						when "101" =>
 							fifoData_io <= brkEnabled & brkAddr(22 downto 16);  -- get addr high byte
 						when "110" =>
@@ -445,7 +418,7 @@ begin
 						when "011" =>
 							hostAddr_next(7 downto 0) <= fifoData_io;    -- set addr low byte
 						when "100" =>
-							r4_next <= fifoData_io;
+							r4_next <= fifoData_io(1 downto 0);
 						when "101" =>
 							brkAddr_next(22 downto 16) <= fifoData_io(6 downto 0);  -- set addr high byte
 							brkEnabled_next <= fifoData_io(7);
@@ -498,7 +471,6 @@ begin
 		mdBeginRead,
 		mdBeginWrite,
 		mdMemOp,
-		ssData,
 		serCtrl,
 		mdData_io,
 		memOutData,
@@ -513,7 +485,6 @@ begin
 	begin
 		mstate_next <= mstate;
 		mdMemOp_next <= MEM_NOP;
-		ssData_next <= ssData;
 		serCtrl_next <= serCtrl;
 		mdReadData <= (others => '0');
 		sdSendData <= (others => '0');
@@ -535,9 +506,9 @@ begin
 					elsif ( mdBeginWrite = '1' ) then
 						mstate_next <= MSTATE_WAIT_WRITE;
 						case mdAddr_in(1 downto 0) is
-							when MDREG_YIELDBUS =>
+							--when MDREG_YIELDBUS =>
 								-- Writing to YIELDBUS updates ssData
-								ssData_next <= mdData_io;
+							--	ssData_next <= mdData_io;
 							when MDREG_SERDATA =>
 								sdSendData <= mdData_io(7 downto 0);
 								sdLoad <= '1';
@@ -642,8 +613,8 @@ begin
 	-- Double the IFCLK to get 96MHz
 	clockGenerator: entity work.ClockGenerator
 		port map (
+			RST_IN     => '0',
 			CLKIN_IN   => ifclk_in,    -- input 48MHz IFCLK from FX2LP
-			RST_IN     => reset_in,    -- reset input
 			CLKFX_OUT  => clk96,       -- output 96MHz clock for memctrl
 			LOCKED_OUT => clk96Valid,  -- goes high when clk96 is stable
 			CLK0_OUT   => clk48        -- buffered IFCLK
@@ -652,7 +623,7 @@ begin
 	
 	------------------------------------------------------------------------------------------------
 	-- Generate signals for driving the CellularRAM in synchronous mode @48MHz
-	memReset  <= reset_in or not clk96Valid;
+	memReset  <= not clk96Valid;
 	ramLB_out <= '0';  -- Never do byte operations
 	ramUB_out <= '0';
 	memoryController: entity work.MemoryController(Behavioural)
@@ -685,7 +656,6 @@ begin
 	mdReset_out <= not(r4(FLAG_RUN));
 	businterface: entity work.businterface
 		port map(
-			reset_in         => reset_in,
 			clk_in           => clk48,
 
 			-- External connections
@@ -711,7 +681,6 @@ begin
 	-- Talk to the SD card
 	serialio: entity work.serialio
 		port map(
-			reset_in  => reset_in,
 			clk_in    => clk48,
 			data_in   => sdSendData,
 			data_out  => sdRecvData,
@@ -721,18 +690,6 @@ begin
 			sData_out => sdDI_out,
 			sData_in  => sdDO_in,
 			sClk_out  => sdClk_out
-		);
-
-	
-	------------------------------------------------------------------------------------------------
-	-- Drive the 7-seg display
-	sseg_out(7) <= r4(2) and r4(3) and r4(4) and r4(5) and r4(6) and r4(7) and sdCD_in;
-	sevenseg : entity work.sevenseg
-		port map(
-			clk    => clk48,
-			data   => ssData,
-			segs   => sseg_out(6 downto 0),
-			anodes => anode_out
 		);
 
 end Behavioural;

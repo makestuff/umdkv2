@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-NET "reset_in"        LOC = "B18";   # BTN<3>
 
 # FX2LP signals
 NET "ifclk_in"        LOC = "T15";
@@ -22,10 +21,8 @@ NET "gotRoom_in"      LOC = "U14";   # FLAGB
 NET "gotData_in"      LOC = "V16";   # FLAGC
 NET "slrd_out"        LOC = "N9";
 NET "slwr_out"        LOC = "V9";
-#NET "flagA_in"        LOC = "V14";
 
 # PortA
-#NET "int0_in"         LOC = "U15";   # PA0
 NET "sloe_out"        LOC = "V15";   # PA2
 NET "fifoAddr_out<0>" LOC = "T14";   # PA4
 NET "fifoAddr_out<1>" LOC = "V13";   # PA5
@@ -97,9 +94,6 @@ NET "mdBufOE_out"     LOC = "F11"; # Bank = 0, Pin name = IO_L08N_0, Type = I/O,
 NET "mdBufDir_out"    LOC = "B16"; # Bank = 0, Pin name = IO_L01P_0, Type = I/O, Sch name = R-IO40
 NET "mdOE_in"         LOC = "D11"; # Bank = 0, Pin name = IO_L09N_0, Type = I/O, Sch name = R-IO24
 NET "mdLDSW_in"       LOC = "C11"; # Bank = 0, Pin name = IO_L09P_0, Type = I/O, Sch name = R-IO27
-#NET "mdUDSW_in"       LOC = "E11"; # Bank = 0, Pin name = IO_L08P_0, Type = I/O, Sch name = R-IO28
-#NET "mdClk_in"        LOC = "B9"; # Bank = 0, Pin name = IO_L13N/GCLK9
-#NET "mdAS_in"         LOC = "B11"; # Bank = 0, Pin name = IO/VREF_0, Type = VREF, Sch name = R-IO26
 
 # MegaDrive address bus (numbered 1-23 on the 68000)
 NET "mdAddr_in<0>"    LOC = "E10"; # Bank = 0, Pin name = IO_L11N_0/GCLK5, Type = GCLK, Sch name = R-IO25
@@ -144,49 +138,12 @@ NET "mdData_io<13>"   LOC = "B14"; # Bank = 0, Pin name = IO_L04P_0, Type = I/O,
 NET "mdData_io<14>"   LOC = "C14"; # Bank = 0, Pin name = IO_L03N_0/VREF_0, Type = VREF, Sch name = R-IO36
 NET "mdData_io<15>"   LOC = "E13"; # Bank = 0, Pin name = IO, Type = I/O, Sch name = R-IO34
 
-# Debug ports
-#NET "jc2_out"         LOC = "J16"; # Bank = 1, Pin name = IO_L13N_1/A5/RHCLK5, Type = RHCLK/DUAL, Sch name = JC2
-#NET "jc7_out"         LOC = "H15"; # Bank = 1, Pin name = IO_L17N_1, Type = I/O, Sch name = JC7
-
 # SD-Card connections
 NET "sdDO_in"         LOC = "L15"; # Bank = 1, Pin name = IO_L09N_1/A11, Type = DUAL, Sch name = JA1
 NET "sdClk_out"       LOC = "K12"; # Bank = 1, Pin name = IO_L11N_1/A9/RHCLK1, Type = RHCLK/DUAL, Sch name = JA2
 NET "sdDI_out"        LOC = "L17"; # Bank = 1, Pin name = IO_L10N_1/VREF_1, Type = VREF, Sch name = JA3
 NET "sdCS_out"        LOC = "M15"; # Bank = 1, Pin name = IO_L07P_1, Type = I/O, Sch name = JA4
 NET "sdCD_in"         LOC = "K13"; # Bank = 1, Pin name = IO_L11P_1/A10/RHCLK0, Type = RHCLK/DUAL, Sch name = JA7
-
-# On-board peripheral signals
-#NET "led_out<0>"      LOC = "J14";
-#NET "led_out<1>"      LOC = "J15";
-#NET "led_out<2>"      LOC = "K15";
-#NET "led_out<3>"      LOC = "K14";
-#NET "led_out<4>"      LOC = "E16";
-#NET "led_out<5>"      LOC = "P16";
-#NET "led_out<6>"      LOC = "E4";
-#NET "led_out<7>"      LOC = "P4";
-
-NET "sseg_out<6>"     LOC = "H14"; # segment g
-NET "sseg_out<5>"     LOC = "J17"; # segment f
-NET "sseg_out<4>"     LOC = "G14"; # segment e
-NET "sseg_out<3>"     LOC = "D16"; # segment d
-NET "sseg_out<2>"     LOC = "D17"; # segment c
-NET "sseg_out<1>"     LOC = "F18"; # segment b
-NET "sseg_out<0>"     LOC = "L18"; # segment a
-NET "sseg_out<7>"     LOC = "C17"; # decimal point
-
-NET "anode_out<0>"    LOC = "F17";
-NET "anode_out<1>"    LOC = "H17";
-NET "anode_out<2>"    LOC = "C18";
-NET "anode_out<3>"    LOC = "F15";
-
-#NET "sw_in<0>"        LOC = "G18";   # SW0
-#NET "sw_in<1>"        LOC = "H18";   # SW1
-#NET "sw_in<2>"        LOC = "K18";   # SW2
-#NET "sw_in<3>"        LOC = "K17";   # SW3
-#NET "sw_in<4>"        LOC = "L14";   # SW4
-#NET "sw_in<5>"        LOC = "L13";   # SW5
-#NET "sw_in<6>"        LOC = "N17";   # SW6
-#NET "sw_in<7>"        LOC = "R17";   # SW7
 
 #========================================================
 # Timing constraint of 48MHz IFCLK from FX2LP

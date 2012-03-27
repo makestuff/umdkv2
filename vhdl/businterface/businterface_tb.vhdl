@@ -51,7 +51,6 @@ begin
 	-- Instantiate the unit under test
 	uut: entity work.businterface
 		port map(
-			reset_in  => reset,
 			clk_in    => clk,
 
 			-- External connections
@@ -93,10 +92,6 @@ begin
 		mdAddr   <= EXT_ADDR(22 downto 2);
 		mdDataIn <= (others => 'X');
 		mdDataIO <= (others => 'X');
-		reset <= '1';
-		wait for 10 ns;
-		reset <= '0';
-		wait for 40 ns;
 		loop
 			exit when endfile(inFile);
 			readline(inFile, inLine);

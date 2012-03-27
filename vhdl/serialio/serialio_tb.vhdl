@@ -10,7 +10,6 @@ end serialio_tb;
 
 architecture behavioural of serialio_tb is
 
-	signal reset    : std_logic;
 	signal clk      : std_logic;
 	signal sendData : std_logic_vector(7 downto 0);
 	signal recvData : std_logic_vector(7 downto 0);
@@ -25,7 +24,6 @@ begin
 	-- Instantiate the unit under test
 	uut: entity work.serialio
 		port map(
-			reset_in  => reset,
 			clk_in    => clk,
 			data_in   => sendData,
 			data_out  => recvData,
@@ -55,10 +53,7 @@ begin
 	begin
 		sendData <= (others => 'X');
 		load <= '0';
-		reset <= '1';
-		wait for 10 ns;
-		reset <= '0';
-		wait for 40 ns;
+		wait for 50 ns;
 		loop
 			exit when endfile(inFile);
 			readline(inFile, inLine);

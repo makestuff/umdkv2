@@ -5,7 +5,6 @@ use ieee.numeric_std.all;
 
 entity serialio is
 	port(
-		reset_in  : in  std_logic;
 		clk_in    : in  std_logic;
 		data_out  : out std_logic_vector(7 downto 0);
 		data_in   : in  std_logic_vector(7 downto 0);
@@ -25,30 +24,29 @@ architecture behavioural of serialio is
 		STATE_SCLK_LOW,       -- drive LSB on sData whilst holding sClk low
 		STATE_SCLK_HIGH       -- drive LSB on sData whilst holding sClk high
 	);
-	signal state, state_next           : StateType;
-	signal shiftOut, shiftOut_next     : std_logic_vector(7 downto 0);     -- outbound shift reg
-	signal shiftIn, shiftIn_next       : std_logic_vector(6 downto 0);     -- inbound shift reg
-	signal inReg, inReg_next           : std_logic_vector(7 downto 0);     -- receive side dbl.buf
-	signal sClk, sClk_next             : std_logic;                        -- serial clock
-	signal cycleCount, cycleCount_next : unsigned(5 downto 0);             -- num cycles per 1/2 bit
-	signal bitCount, bitCount_next     : unsigned(2 downto 0);             -- num bits remaining
-	constant CLK_400kHz                : unsigned(5 downto 0) := "111011"; -- count for 400kHz clk
-	constant CLK_24MHz                 : unsigned(5 downto 0) := "000000"; -- count for 24MHz clk
+	signal state           : StateType := STATE_WAIT_FOR_DATA;
+	signal state_next      : StateType := STATE_WAIT_FOR_DATA;
+	signal shiftOut        : std_logic_vector(7 downto 0) := x"00";      -- outbound shift reg
+	signal shiftOut_next   : std_logic_vector(7 downto 0) := x"00";      -- outbound shift reg
+	signal shiftIn         : std_logic_vector(6 downto 0) := "0000000";  -- inbound shift reg
+	signal shiftIn_next    : std_logic_vector(6 downto 0) := "0000000";  -- inbound shift reg
+	signal inReg           : std_logic_vector(7 downto 0) := x"00";      -- receive side dbl.buf
+	signal inReg_next      : std_logic_vector(7 downto 0) := x"00";      -- receive side dbl.buf
+	signal sClk            : std_logic := '1';                           -- serial clock
+	signal sClk_next       : std_logic := '1';                           -- serial clock
+	signal cycleCount      : unsigned(5 downto 0) := "000000";           -- num cycles per 1/2 bit
+	signal cycleCount_next : unsigned(5 downto 0) := "000000";           -- num cycles per 1/2 bit
+	signal bitCount        : unsigned(2 downto 0) := "000";              -- num bits remaining
+	signal bitCount_next   : unsigned(2 downto 0) := "000";              -- num bits remaining
+	constant CLK_400kHz    : unsigned(5 downto 0) := "111011";           -- count for 400kHz clk
+	constant CLK_24MHz     : unsigned(5 downto 0) := "000000";           -- count for 24MHz clk
 
 begin
 
 	-- All change!
-	process(clk_in, reset_in)
+	process(clk_in)
 	begin
-		if ( reset_in = '1' ) then
-			state <= STATE_WAIT_FOR_DATA;
-			shiftOut <= (others => '0');
-			shiftIn <= (others => '0');
-			inReg <= (others => '0');
-			sClk <= '1';
-			bitCount <= "000";
-			cycleCount <= (others => '0');
-		elsif ( clk_in'event and clk_in = '1' ) then
+		if ( clk_in'event and clk_in = '1' ) then
 			state <= state_next;
 			shiftOut <= shiftOut_next;
 			shiftIn <= shiftIn_next;

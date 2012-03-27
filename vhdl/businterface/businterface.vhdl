@@ -21,7 +21,6 @@ use ieee.numeric_std.all;
 
 entity businterface is
 	port(
-		reset_in         : in    std_logic;
 		clk_in           : in    std_logic;
 
 		-- External connections
@@ -50,14 +49,14 @@ architecture behavioural of businterface is
 		BSTATE_WAIT_READ,
 		BSTATE_WAIT_WRITE
 	);
-	signal bstate       : BStateType;
-	signal bstate_next  : BStateType;
+	signal bstate       : BStateType := BSTATE_IDLE;
+	signal bstate_next  : BStateType := BSTATE_IDLE;
 	signal mdAccessMem  : std_logic;
 	signal mdAccessIO   : std_logic;
 	signal mdBeginRead  : std_logic;
 	signal mdBeginWrite : std_logic;
-	signal mdSyncOE     : std_logic;
-	signal mdSyncWE     : std_logic;
+	signal mdSyncOE     : std_logic := '0';
+	signal mdSyncWE     : std_logic := '0';
 	signal mdDriveBus   : std_logic;
 	constant IO_BASE : std_logic_vector(20 downto 0) := "1" & x"42600";
 
@@ -65,13 +64,9 @@ begin
 
 	------------------------------------------------------------------------------------------------
 	-- All change!
-	process(clk_in, reset_in)
+	process(clk_in)
 	begin
-		if ( reset_in = '1' ) then
-			bstate <= BSTATE_IDLE;
-			mdSyncOE <= '0';
-			mdSyncWE <= '0';
-		elsif ( clk_in'event and clk_in = '1' ) then
+		if ( clk_in'event and clk_in = '1' ) then
 			bstate <= bstate_next;
 			mdSyncOE <= not(mdOE_in);
 			mdSyncWE <= not(mdLDSW_in);

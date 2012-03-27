@@ -1,0 +1,157 @@
+entity toplevel is
+	port(
+		-- 15 connections to the FX2LP USB controller
+		ifclk_in     : in    std_logic;                      -- 48MHz master clock                        (IFCLK)
+		gotRoom_in   : in    std_logic;                      -- the FIFO has room for data from the FPGA  (FLAGB)
+		gotData_in   : in    std_logic;                      -- the FIFO has data for the FPGA            (FLAGC)
+		slrd_out     : out   std_logic;                      -- FPGA is reading from FIFO (also drives FX2LP's SLOE)
+		slwr_out     : out   std_logic;                      -- FPGA is writing to FIFO
+		pktEnd_out   : out   std_logic;                      -- commit an IN packet early (i.e nonaligned FIFO write)
+		fifoAddr_out : out   std_logic;                      -- actually fifoAddr<0>; fifoAddr<1> tied high on PCB
+		fifoData_io  : inout std_logic_vector(7 downto 0);   -- USB FIFO data
+		
+		-- 46 connections to the MegaDrive cart slot
+		mdReset_out  : out   std_logic;                      -- these three drive discrete transistors on the
+		mdDTACK_out  : out   std_logic;                      -- PCB to get 5V-tolerant open-collector outputs
+		mdCD_out     : out   std_logic;                      -- cart detect
+		mdBufDir_out : out   std_logic;                      -- set direction of data bus buffer
+		bufOE_in     : in    std_logic;                      -- MegaDrive is reading
+		bufLDSW_in   : in    std_logic;                      -- MegaDrive is writing low byte
+		bufUDSW_in   : in    std_logic;                      -- MegaDrive is writing high byte
+		bufAddr_in   : in    std_logic_vector(22 downto 0);  -- word address (8*1024*1024 words total address space)
+		bufData_io   : inout std_logic_vector(15 downto 0;   -- data word to/from MegaDrive
+		
+		-- 36 connections to the SDRAM
+		ramClk_out   : out   std_logic;                      -- SDRAM's CKE tied high on the PCB
+		ramRAS_out   : out   std_logic;                      -- \
+		ramCAS_out   : out   std_logic;                      --  together form ramCmd
+		ramWE_out    : out   std_logic;                      -- /
+		ramLDQM_out  : out   std_logic;                      -- mask low byte
+		ramUDQM_out  : out   std_logic;                      -- mask high byte
+		ramBank_out  : out   std_logic_vector(1 downto 0);   -- select one of four banks
+		ramAddr_out  : out   std_logic_vector(11 downto 0);  -- multiplexed row & column address
+		ramData_io   : inout std_logic_vector(15 downto 0);  -- data word to/from SDRAM
+		
+		-- 5 connections to the SD-card
+		sdClk_out   : out    std_logic;                      -- 25MHz clock for SD-card
+		sdDO_in     : in     std_logic;                      -- data from card
+		sdDI_out    : out    std_logic;                      -- data to card
+		sdCS_out    : out    std_logic                       -- card select
+	);
+end toplevel;
+
+
+Grand Total: 15+46+36+4 = 101, leaving one spare
+
+
+SPARE:
+  P127  IO_L36P_GCLK15_0            
+
+FX2LP USB Interface x15:
+  P126  IO_L36N_GCLK14_0            ifclk_in
+  P124  IO_L37P_GCLK13_0            fifoData_io<0>
+  P123  IO_L37N_GCLK12_0            fifoData_io<1>
+  P121  IO_L62P_0                   fifoData_io<2>
+  P120  IO_L62N_VREF_0              fifoData_io<3>
+  P119  IO_L63P_SCP7_0              fifoData_io<4>
+  P118  IO_L63N_SCP6_0              fifoData_io<5>
+  P117  IO_L64P_SCP5_0              fifoData_io<6>
+  P116  IO_L64N_SCP4_0              fifoData_io<7>
+  P115  IO_L65P_SCP3_0              gotRoom_in
+  P114  IO_L65N_SCP2_0              gotData_in
+  P112  IO_L66P_SCP1_0              fifoAddr_out
+  P111  IO_L66N_SCP0_0              pktEnd_out
+  P105  IO_L1P_1                    slrd_out
+  P104  IO_L1N_VREF_1               slwr_out
+
+SDRAM x36:
+  P102  IO_L32P_1                   ramLDQM_out
+  P101  IO_L32N_1                   ramWE_out
+  P100  IO_L33P_1                   ramCAS_out
+  P99   IO_L33N_1                   ramRAS_out
+  P98   IO_L34P_1                   ramBank_out<0>
+  P97   IO_L34N_1                   ramBank_out<1>
+  P95   IO_L40P_GCLK11_1            ramAddr_out<10>
+  P94   IO_L40N_GCLK10_1            ramAddr_out<0>
+  P93   IO_L41P_GCLK9_IRDY1_1       ramAddr_out<1>
+  P92   IO_L41N_GCLK8_1             ramAddr_out<2>
+  P88   IO_L42P_GCLK7_1             ramAddr_out<3>
+  P87   IO_L42N_GCLK6_TRDY1_1       ramAddr_out<4>
+  P85   IO_L43P_GCLK5_1             ramAddr_out<5>
+  P84   IO_L43N_GCLK4_1             ramAddr_out<6>
+  P83   IO_L45P_1                   ramAddr_out<7>
+  P82   IO_L45N_1                   ramAddr_out<8>
+  P81   IO_L46P_1                   ramAddr_out<9>
+  P80   IO_L46N_1                   ramAddr_out<11>
+  P79   IO_L47P_1                   ramClk_out
+  P78   IO_L47N_1                   ramUDQM_out
+  P75   IO_L74P_AWAKE_1             ramData_io<8>
+  P74   IO_L74N_DOUT_BUSY_1         ramData_io<9>
+  P70   IO_L1P_CCLK_2               ramData_io<10>
+  P69   IO_L1N_M0_CMPMISO_2         ramData_io<11>
+  P67   IO_L2P_CMPCLK_2             ramData_io<12>
+  P66   IO_L2N_CMPMOSI_2            ramData_io<13>
+  P65   IO_L3P_D0_DIN_MISO_MISO1_2  ramData_io<14>
+  P64   IO_L3N_MOSI_CSI_B_MISO0_2   ramData_io<15>
+  P62   IO_L12P_D1_MISO2_2          ramData_io<0>
+  P61   IO_L12N_D2_MISO3_2          ramData_io<1>
+  P60   IO_L13P_M1_2                ramData_io<2>
+  P59   IO_L13N_D10_2               ramData_io<3>
+  P58   IO_L14P_D11_2               ramData_io<4>
+  P57   IO_L14N_D12_2               ramData_io<5>
+  P56   IO_L30P_GCLK1_D13_2         ramData_io<6>
+  P55   IO_L30N_GCLK0_USERCCLK_2    ramData_io<7>
+
+SD-CARD x4:
+  P51   IO_L31P_GCLK31_D14_2        sdCS_out
+  P50   IO_L31N_GCLK30_D15_2        sdDI_out
+  P48   IO_L48P_D7_2                sdClk_out
+  P47   IO_L48N_RDWR_B_VREF_2       sdDO_in
+
+MEGADRIVE x46 (VIA LEVEL-SHIFTERS)
+  P46   IO_L49P_D3_2                mdCD_out        -- drives base of a transistor
+  P45   IO_L49N_D4_2                mdBufDir_out    -- sets direction of data bus buffer
+  P44   IO_L62P_D5_2                bufData_io<11>  -- buffered mdData<11>
+  P43   IO_L62N_D6_2                bufData_io<3>   -- buffered mdData<3>
+  P41   IO_L64P_D8_2                bufData_io<4>   -- buffered mdData<4>
+  P40   IO_L64N_D9_2                bufData_io<10>  -- buffered mdData<10>
+  P39   IO_L65P_INIT_B_2            bufData_io<2>   -- buffered mdData<2>
+  P38   IO_L65N_CSO_B_2             bufData_io<12>  -- buffered mdData<12>
+  P35   IO_L1P_3                    bufData_io<5>   -- buffered mdData<5>
+  P34   IO_L1N_VREF_3               bufData_io<13>  -- buffered mdData<13>
+  P33   IO_L2P_3                    bufData_io<9>   -- buffered mdData<9>
+  P32   IO_L2N_3                    bufData_io<14>  -- buffered mdData<14>
+  P30   IO_L36P_3                   bufData_io<1>   -- buffered mdData<1>
+  P29   IO_L36N_3                   bufData_io<15>  -- buffered mdData<15>
+  P27   IO_L37P_3                   bufData_io<6>   -- buffered mdData<6>
+  P26   IO_L37N_3                   bufData_io<8>   -- buffered mdData<8>
+  P24   IO_L41P_GCLK27_3            bufData_io<0>   -- buffered mdData<0>
+  P23   IO_L41N_GCLK26_3            bufData_io<7>   -- buffered mdData<7>
+  P22   IO_L42P_GCLK25_TRDY2_3      mdDTACK_out     -- drives base of a transistor
+  P21   IO_L42N_GCLK24_3            bufUDSW_in      -- buffered mdUDSW_in
+  P17   IO_L43P_GCLK23_3            bufLDSW_in      -- buffered mdLDSW_in
+  P16   IO_L43N_GCLK22_IRDY2_3      bufAddr_in<1>   -- buffered mdAddr_in<0>
+  P15   IO_L44P_GCLK21_3            bufOE_in        -- buffered mdOE_in
+  P14   IO_L44N_GCLK20_3            bufAddr_in<17>  -- buffered mdAddr_in<16>
+  P12   IO_L49P_3                   bufAddr_in<2>   -- buffered mdAddr_in<1>
+  P11   IO_L49N_3                   bufAddr_in<16>  -- buffered mdAddr_in<15>
+  P10   IO_L50P_3                   bufAddr_in<3>   -- buffered mdAddr_in<2>
+  P9    IO_L50N_3                   bufAddr_in<15>  -- buffered mdAddr_in<14>
+  P8    IO_L51P_3                   bufAddr_in<23>  -- buffered mdAddr_in<22>
+  P7    IO_L51N_3                   bufAddr_in<4>   -- buffered mdAddr_in<3>
+  P6    IO_L52P_3                   bufAddr_in<22>  -- buffered mdAddr_in<21>
+  P5    IO_L52N_3                   bufAddr_in<14>  -- buffered mdAddr_in<13>
+  P2    IO_L83P_3                   bufAddr_in<21>  -- buffered mdAddr_in<20>
+  P1    IO_L83N_VREF_3              bufAddr_in<5>   -- buffered mdAddr_in<4>
+  P144  IO_L1P_HSWAPEN_0            bufAddr_in<20>  -- buffered mdAddr_in<19>
+  P143  IO_L1N_VREF_0               bufAddr_in<13>  -- buffered mdAddr_in<12>
+  P142  IO_L2P_0                    bufAddr_in<19>  -- buffered mdAddr_in<18>
+  P141  IO_L2N_0                    bufAddr_in<6>   -- buffered mdAddr_in<5>
+  P140  IO_L3P_0                    bufAddr_in<18>  -- buffered mdAddr_in<17>
+  P139  IO_L3N_0                    bufAddr_in<12>  -- buffered mdAddr_in<11>
+  P138  IO_L4P_0                    bufAddr_in<10>  -- buffered mdAddr_in<9>
+  P137  IO_L4N_0                    bufAddr_in<7>   -- buffered mdAddr_in<6>
+  P134  IO_L34P_GCLK19_0            bufAddr_in<9>   -- buffered mdAddr_in<8>
+  P133  IO_L34N_GCLK18_0            bufAddr_in<11>  -- buffered mdAddr_in<10>
+  P132  IO_L35P_GCLK17_0            bufAddr_in<8>   -- buffered mdAddr_in<7>
+  P131  IO_L35N_GCLK16_0            mdReset_out     -- drives base of a transistor
