@@ -629,25 +629,25 @@ begin
 	memoryController: entity work.MemoryController(Behavioural)
 		port map(
 			-- Internal interface
-			clk           => clk96,        -- clocked at 2x rate you want ramClk
-			reset         => memReset,     -- reset memctrl
-			memRequest    => memOp(0),     -- ask memctrl to begin an operation
-			readNotWrite  => memOp(1),     -- tell memctrl whether to read or write
-			busy          => memBusy,      -- mem controller is busy
-			mcrAddrInput  => memAddr,      -- address you want to access
-			mcrDataInput  => memInData,    -- data to be written to RAM
-			mcrDataOutput => memOutData,   -- data read from RAM (registered)
+			mcClk_in      => clk96,        -- clocked at 2x rate you want ramClk
+			mcReset_in    => memReset,     -- reset memctrl
+			mcRequest_in  => memOp(0),     -- ask memctrl to begin an operation
+			mcRW_in       => memOp(1),     -- tell memctrl whether to read or write
+			mcBusy_out    => memBusy,      -- mem controller is busy
+			mcAddr_in     => memAddr,      -- address you want to access
+			mcData_in     => memInData,    -- data to be written to RAM
+			mcData_out    => memOutData,   -- data read from RAM (registered)
 
 			-- External interface
-			ramClk        => ramClk_out,   -- driven at clk/2
-			nWait         => ramWait_in,   -- RAM busy pin
-			addressBus    => ramAddr_out,  -- RAM address pins
-			dataBus       => ramData_io,   -- RAM data pins (bidirectional)
-			nADV          => ramADV_out,   -- RAM address valid pin
-			nCE           => ramCE_out,    -- RAM chip enable pin
-			CRE           => ramCRE_out,   -- Control Register Enable pin
-			nWE           => ramWE_out,    -- Write Enable
-			nOE           => ramOE_out     -- Output Enable
+			ramClk_out    => ramClk_out,   -- driven at clk/2
+			ramWait_in    => ramWait_in,   -- RAM busy pin
+			ramAddr_out   => ramAddr_out,  -- RAM address pins
+			ramData_io    => ramData_io,   -- RAM data pins (bidirectional)
+			ramADV_out    => ramADV_out,   -- RAM address valid pin
+			ramCE_out     => ramCE_out,    -- RAM chip enable pin
+			ramCRE_out    => ramCRE_out,   -- Control Register Enable pin
+			ramWE_out     => ramWE_out,    -- Write Enable
+			ramOE_out     => ramOE_out     -- Output Enable
 		);
 
 	
