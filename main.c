@@ -91,7 +91,8 @@ int main(int argc, char *argv[]) {
 	int numErrors;
 	int server = -1;
 	int conn = -1;
-	int port, returnCode;
+	uint16 port;
+	int retVal;
 	socklen_t clientAddrLen;
 	struct sockaddr_in serverAddress = {0,};
 	struct sockaddr_in clientAddress = {0,};
@@ -104,10 +105,11 @@ int main(int argc, char *argv[]) {
 	const char *rom = NULL;
 	bool start = false;
 	uint32 brkAddr = 0x000000;
+	FLStatus fStatus;
 
 	if ( arg_nullcheck(argTable) != 0 ) {
 		errRender(&error, "Insufficient memory!");
-		FAIL(1);
+		FAIL(1, cleanup);
 	}
 
 	numErrors = arg_parse(argc, argv, argTable);
@@ -117,13 +119,13 @@ int main(int argc, char *argv[]) {
 		arg_print_syntax(stdout, argTable, "\n");
 		printf("\nInteract with MegaDrive.\n\n");
 		arg_print_glossary(stdout, argTable,"  %-10s %s\n");
-		FAIL(0);
+		FAIL(0, cleanup);
 	}
 
 	if ( numErrors ) {
 		arg_print_errors(stdout, endOpt, progName);
-		errRender(&error, "Try '%s --help' for more information.", progName);
-		FAIL(2);
+		fprintf(stderr, "Try '%s --help' for more information.", progName);
+		FAIL(2, cleanup);
 	}
 
 	if ( romOpt->count ) {
@@ -142,8 +144,8 @@ int main(int argc, char *argv[]) {
 		const char *ivp = NULL;
 		const char *xsvf = NULL;
 		if ( !vpOpt->count ) {
-			errRender(&error, "With --target=umdk you need to specify --vp=<VID:PID>");
-			FAIL(3);
+			fprintf(stderr, "With --target=umdk you need to specify --vp=<VID:PID>");
+			FAIL(3, cleanup);
 		}
 		if ( ivpOpt->count ) {
 			ivp = ivpOpt->sval[0];
@@ -151,30 +153,31 @@ int main(int argc, char *argv[]) {
 		if ( xsvfOpt->count ) {
 			xsvf = xsvfOpt->filename[0];
 		}
-		flInitialise();
+
+		fStatus = flInitialise(0, &error);
+		CHECK_STATUS(fStatus, 1, cleanup);
+
 		cpu = umdkCreate(vpOpt->sval[0], ivp, xsvf, rom, start, brkAddr, isInterrupted);
-		if ( !cpu ) {
-			FAIL(1);
-		}
+		CHECK_STATUS(!cpu, 2, cleanup);
 	} else {
-		errRender(&error, "Unsupported target: %s", tgtOpt->sval[0]);
-		FAIL(3);
+		fprintf(stderr, "Unsupported target: %s", tgtOpt->sval[0]);
+		FAIL(3, cleanup);
 	}
 
 	if ( portOpt->count ) {
-		port = portOpt->ival[0];
+		port = (uint16)portOpt->ival[0];
 		server = socket(AF_INET, SOCK_STREAM, 0);
 		if ( server < 0 ) {
 			errRenderStd(&error);
-			FAIL(1);
+			FAIL(1, cleanup);
 		}
 		serverAddress.sin_family = AF_INET;
 		serverAddress.sin_addr.s_addr = INADDR_ANY;
 		serverAddress.sin_port = htons(port);
-		returnCode = bind(server, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
-		if ( returnCode < 0 ) {
+		retVal = bind(server, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+		if ( retVal < 0 ) {
 			errRenderStd(&error);
-			FAIL(2);
+			FAIL(2, cleanup);
 		}
 		for ( ; ; ) {
 			printf("Waiting for GDB connection on :%d...\n", port);
@@ -183,7 +186,7 @@ int main(int argc, char *argv[]) {
 			conn = accept(server, (struct sockaddr *)&clientAddress, &clientAddrLen);
 			if ( conn < 0 ) {
 				errRenderStd(&error);
-				FAIL(3);
+				FAIL(3, cleanup);
 			}
 			u.ip4 = clientAddress.sin_addr.s_addr;
 			printf("Got GDB connection from %d.%d.%d.%d:%d\n", u.ip[0], u.ip[1], u.ip[2], u.ip[3], clientAddress.sin_port);
@@ -191,8 +194,7 @@ int main(int argc, char *argv[]) {
 			printf("GDB disconnected\n");
 		}
 	}
-	returnCode = 0;
-	
+	retVal = 0;
 cleanup:
 	if ( error ) {
 		fprintf(stderr, "%s: %s\n", argv[0], error);
@@ -207,5 +209,5 @@ cleanup:
 	if ( cpu ) {
 		cpu->vt->destroy(cpu);
 	}
-	return returnCode;
+	return retVal;
 }

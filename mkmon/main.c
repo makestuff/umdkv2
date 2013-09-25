@@ -26,7 +26,7 @@ void dumpCode(const char *name, const struct Buffer *buf) {
 		const uint8 *ptr;
 		const uint8 *end;
 		uint8 count;
-		printf("const unsigned int %sCodeSize = %lu;\nconst unsigned char %sCodeData[] = {\n", name, buf->length, name);
+		printf("const unsigned int %sCodeSize = "PFSZD";\nconst unsigned char %sCodeData[] = {\n", name, buf->length, name);
 		ptr = buf->data;
 		end = buf->data + buf->length;
 		count = 1;
@@ -45,29 +45,27 @@ void dumpCode(const char *name, const struct Buffer *buf) {
 }
 
 int main(int argc, const char *argv[]) {
-	int returnCode;
+	int retVal = 0;
 	struct Buffer data = {0,};
 	BufferStatus status;
 	const char *error = NULL;
 
 	if ( argc != 3 ) {
 		fprintf(stderr, "Synopsis: %s <monitor.bin> <name>\n", argv[0]);
-		FAIL(1);
+		FAIL(1, cleanup);
 	}
 
 	status = bufInitialise(&data, 0x4000, 0x00, &error);
 	if ( status ) {
-		FAIL(2);
+		FAIL(2, cleanup);
 	}
 
 	status = bufAppendFromBinaryFile(&data, argv[1], &error);
 	if ( status ) {
-		FAIL(2);
+		FAIL(2, cleanup);
 	}
 
 	dumpCode(argv[2], &data);
-
-	returnCode = 0;
 
 cleanup:
 	if ( data.data ) {
@@ -77,5 +75,5 @@ cleanup:
 		fprintf(stderr, "%s\n", error);
 		errFree(error);
 	}
-	return returnCode;
+	return retVal;
 }

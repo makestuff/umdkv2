@@ -158,39 +158,39 @@ static void writeLong(uint32 value, uint8 *p) {
 static UMDKStatus setBreakpointAddress(
 	struct FLContext *handle, uint32 address, bool enabled, const char **error)
 {
-	UMDKStatus returnCode;
+	UMDKStatus retVal;
 	FLStatus fStatus;
 	uint8 byte = 0x00;
 	flCleanWriteBuffer(handle);
 
 	// First disable breakpoint to stop mid-update hits:
-	fStatus = flAppendWriteRegisterCommand(handle, BRK0_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "umdkSetBreakpointAddress()", UMDK_FPGALINK_ERR);
+	fStatus = flAppendWriteChannelCommand(handle, BRK0_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "umdkSetBreakpointAddress()");
 
 	// Now update the breakpoint address, LSB first:
 	address >>= 1;
 	byte = address & 0x000000FF;
-	fStatus = flAppendWriteRegisterCommand(handle, BRK2_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "umdkSetBreakpointAddress()", UMDK_FPGALINK_ERR);
+	fStatus = flAppendWriteChannelCommand(handle, BRK2_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "umdkSetBreakpointAddress()");
 	address >>= 8;
 	byte = address & 0x000000FF;
-	fStatus = flAppendWriteRegisterCommand(handle, BRK1_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "umdkSetBreakpointAddress()", UMDK_FPGALINK_ERR);
+	fStatus = flAppendWriteChannelCommand(handle, BRK1_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "umdkSetBreakpointAddress()");
 	address >>= 8;
 	if ( enabled ) {
-		byte = (address & 0x000000FF) | FLAG_BKEN;
+		byte = (uint8)(address | FLAG_BKEN);
 	} else {
-		byte = (address & 0x0000007F);
+		byte = (uint8)(address & 0x7F);
 	}
-	fStatus = flAppendWriteRegisterCommand(handle, BRK0_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "umdkSetBreakpointAddress()", UMDK_FPGALINK_ERR);
+	fStatus = flAppendWriteChannelCommand(handle, BRK0_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "umdkSetBreakpointAddress()");
 
 	// Play those writes now:
 	fStatus = flPlayWriteBuffer(handle, 100, error);
-	CHECK_STATUS(fStatus, "umdkSetBreakpointAddress()", UMDK_FPGALINK_ERR);
-	return UMDK_SUCCESS;
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "umdkSetBreakpointAddress()");
+	retVal = UMDK_SUCCESS;
 cleanup:
-	return returnCode;
+	return retVal;
 }
 
 /*
@@ -201,16 +201,16 @@ static UMDKStatus getBreakpointAddress(
 	FLStatus fStatus;
 	uint8 byte;
 	uint32 thisAddr;
-	fStatus = flReadRegister(handle, 100, BRK0_REG, 1, &byte, error);
+	fStatus = flReadChannel(handle, 100, BRK0_REG, 1, &byte, error);
 	CHECK_STATUS(fStatus, "umdkGetBreakpointAddress()", UMDK_FPGALINK_ERR);
 	byte &= ~FLAG_BKEN;
 	thisAddr = byte;
 	thisAddr <<= 8;
-	fStatus = flReadRegister(handle, 100, BRK1_REG, 1, &byte, error);
+	fStatus = flReadChannel(handle, 100, BRK1_REG, 1, &byte, error);
 	CHECK_STATUS(fStatus, "umdkGetBreakpointAddress()", UMDK_FPGALINK_ERR);
 	thisAddr |= byte;
 	thisAddr <<= 8;
-	fStatus = flReadRegister(handle, 100, BRK2_REG, 1, &byte, error);
+	fStatus = flReadChannel(handle, 100, BRK2_REG, 1, &byte, error);
 	CHECK_STATUS(fStatus, "umdkGetBreakpointAddress()", UMDK_FPGALINK_ERR);
 	thisAddr |= byte;
 	thisAddr <<= 1;
@@ -224,31 +224,31 @@ cleanup:
 static UMDKStatus setBreakpointEnabled(
 	struct FLContext *handle, bool enabledFlag, const char **error)
 {
-	UMDKStatus returnCode;
+	UMDKStatus retVal;
 	FLStatus fStatus;
 	uint8 byte;
 	uint8 oldByte;
 
 	// Read it...
-	fStatus = flReadRegister(handle, 100, BRK0_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "umdkSetBreakpointEnabled()", UMDK_FPGALINK_ERR);
+	fStatus = flReadChannel(handle, 100, BRK0_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "umdkSetBreakpointEnabled()");
 	oldByte = byte;
 
 	// Update it...
 	if ( enabledFlag ) {
-		byte |= FLAG_BKEN;
+		byte = (uint8)(byte | FLAG_BKEN);
 	} else {
-		byte &= ~FLAG_BKEN;
+		byte = (uint8)(byte & ~FLAG_BKEN);
 	}
 
 	// Write it back
 	if ( byte != oldByte ) {
-		fStatus = flWriteRegister(handle, 100, BRK0_REG, 1, &byte, error);
-		CHECK_STATUS(fStatus, "umdkSetBreakpointEnabled()", UMDK_FPGALINK_ERR);
+		fStatus = flWriteChannel(handle, 100, BRK0_REG, 1, &byte, error);
+		CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "umdkSetBreakpointEnabled()");
 	}
-	return UMDK_SUCCESS;
+	retVal = UMDK_SUCCESS;
 cleanup:
-	return returnCode;
+	return retVal;
 }
 
 /*
@@ -258,7 +258,7 @@ static UMDKStatus getBreakpointEnabled(
 	UMDKStatus returnCode;
 	FLStatus fStatus;
 	uint8 byte;
-	fStatus = flReadRegister(handle, 100, BRK0_REG, 1, &byte, error);
+	fStatus = flReadChannel(handle, 100, BRK0_REG, 1, &byte, error);
 	CHECK_STATUS(fStatus, "umdkGetBreakpointEnabled()", UMDK_FPGALINK_ERR);
 	if ( byte & FLAG_BKEN ) {
 		*enabledFlag = true;
@@ -275,43 +275,43 @@ cleanup:
 // TODO: Accept ctrl-C from GDB
 //
 static UMDKStatus remoteAcquire(struct UMDK *handle, bool isInterrupted, const char **error) {
-	UMDKStatus returnCode, uStatus;
+	UMDKStatus retVal, uStatus;
 	FLStatus fStatus;
 	handle->flagByte |= FLAG_HREQ;
-	fStatus = flWriteRegister(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
-	CHECK_STATUS(fStatus, "remoteAcquire()", UMDK_FPGALINK_ERR);
-	fStatus = flReadRegister(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
-	CHECK_STATUS(fStatus, "remoteAcquire()", UMDK_FPGALINK_ERR);
+	fStatus = flWriteChannel(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "remoteAcquire()");
+	fStatus = flReadChannel(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "remoteAcquire()");
 	//printf("Attempting to acquire MegaDrive.");
 	//fflush(stdout);
 	while ( !(handle->flagByte & FLAG_HACK) && !isInterrupted ) {
 		flSleep(100);
 		//printf(".");
 		//fflush(stdout);
-		fStatus = flReadRegister(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
-		CHECK_STATUS(fStatus, "remoteAcquire()", UMDK_FPGALINK_ERR);
+		fStatus = flReadChannel(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
+		CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "remoteAcquire()");
 		isInterrupted = handle->isInterrupted((const struct I68K *)handle);
 	}
 	if ( isInterrupted ) {
 		//printf("\nAttempting to interrupt MegaDrive.");
 		//fflush(stdout);
 		uStatus = setBreakpointEnabled(handle->fpga, true, error );
-		CHECK_STATUS(uStatus, "remoteAcquire()", uStatus);
+		CHECK_STATUS(uStatus, uStatus, cleanup, "remoteAcquire()");
 		while ( !(handle->flagByte & FLAG_HACK) ) {
 			flSleep(100);
 			//printf(".");
 			//fflush(stdout);
-			fStatus = flReadRegister(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
-			CHECK_STATUS(fStatus, "remoteAcquire()", UMDK_FPGALINK_ERR);
+			fStatus = flReadChannel(handle->fpga, 100, FLAGS_REG, 1, &handle->flagByte, error);
+			CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "remoteAcquire()");
 		}
 		uStatus = setBreakpointEnabled(handle->fpga, false, error );
-		CHECK_STATUS(uStatus, "remoteAcquire()", uStatus);
+		CHECK_STATUS(uStatus, uStatus, cleanup, "remoteAcquire()");
 	}
 	//printf("\n");
 	//fflush(stdout);
-	returnCode = UMDK_SUCCESS;
+	retVal = UMDK_SUCCESS;
 cleanup:
-	return returnCode;
+	return retVal;
 }
 
 // Prepare a UMDK command block using the cmd, param1 & param2 uint32s
@@ -351,7 +351,7 @@ static void retrieveRegisters(MachineState *state, const uint8 *cmdBlock) {
 static UMDKStatus setAddress(
 	struct FLContext *handle, uint32 address, const char **error)
 {
-	UMDKStatus returnCode;
+	UMDKStatus retVal;
 	FLStatus fStatus;
 	uint8 byte;
 	flCleanWriteBuffer(handle);
@@ -359,92 +359,86 @@ static UMDKStatus setAddress(
 	// Write LSB:
 	address >>= 1;  // get word address
 	byte = address & 0x000000FF;
-	fStatus = flAppendWriteRegisterCommand(handle, ADDR2_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "setAddress()", UMDK_FPGALINK_ERR);
+	fStatus = flAppendWriteChannelCommand(handle, ADDR2_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "setAddress()");
 
 	// Write middle byte:
 	address >>= 8;
 	byte = address & 0x000000FF;
-	fStatus = flAppendWriteRegisterCommand(handle, ADDR1_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "setAddress()", UMDK_FPGALINK_ERR);
+	fStatus = flAppendWriteChannelCommand(handle, ADDR1_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "setAddress()");
 
 	// Write MSB
 	address >>= 8;
 	byte = address & 0x000000FF;
-	fStatus = flAppendWriteRegisterCommand(handle, ADDR0_REG, 1, &byte, error);
-	CHECK_STATUS(fStatus, "setAddress()", UMDK_FPGALINK_ERR);
+	fStatus = flAppendWriteChannelCommand(handle, ADDR0_REG, 1, &byte, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "setAddress()");
 
 	// Play those writes now:
 	fStatus = flPlayWriteBuffer(handle, 100, error);
-	CHECK_STATUS(fStatus, "setAddress()", UMDK_FPGALINK_ERR);
-	return UMDK_SUCCESS;
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "setAddress()");
+	retVal = UMDK_SUCCESS;
 cleanup:
-	return returnCode;
+	return retVal;
 }
 
 // Fails: UMDK_ALIGN_ERR, UMDK_FPGALINK_ERR, UMDK_BUS_ERR
 static UMDKStatus writeMemDirect(
 	struct FLContext *handle, uint32 address, uint32 count, const uint8 *data, const char **error)
 {
-	UMDKStatus uStatus, returnCode;
+	UMDKStatus uStatus, retVal;
 	FLStatus fStatus;
 	uint8 flags;
 
 	// Make sure it's an even number of bytes:
-	if ( count & 1 ) {
-		errRender(error, "writeMemDirect(): Cannot write an odd number of bytes!");
-		FAIL(UMDK_ALIGN_ERR);
-	}
+	CHECK_STATUS(count & 1, UMDK_ALIGN_ERR, cleanup, "writeMemDirect(): Cannot write an odd number of bytes!");
 
 	// Get the flags register:
-	fStatus = flReadRegister(handle, 100, FLAGS_REG, 1, &flags, error);
-	CHECK_STATUS(fStatus, "writeMemDirect()", UMDK_FPGALINK_ERR);
+	fStatus = flReadChannel(handle, 100, FLAGS_REG, 1, &flags, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "writeMemDirect()");
 
 	// Verify that the MD is in reset or has relinquished the bus
-	if ( (flags & FLAG_RUN) && !(flags & FLAG_HACK) ) {
-		errRender(error, "writeMemDirect(): Bus not under host control!");
-		FAIL(UMDK_BUS_ERR);
-	}
+	CHECK_STATUS(
+		(flags & FLAG_RUN) && !(flags & FLAG_HACK),
+		UMDK_BUS_ERR, cleanup, "writeMemDirect(): Bus not under host control!");
 
+	// Do the write
 	uStatus = setAddress(handle, address, error);
-	CHECK_STATUS(uStatus, "writeMemDirect()", uStatus);
-	fStatus = flWriteRegister(handle, 30000, DATA_REG, count, data, error);
-	CHECK_STATUS(fStatus, "writeMemDirect()", UMDK_FPGALINK_ERR);
-	return UMDK_SUCCESS;
+	CHECK_STATUS(uStatus, uStatus, cleanup, "writeMemDirect()");
+	fStatus = flWriteChannel(handle, 30000, DATA_REG, count, data, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "writeMemDirect()");
+	retVal = UMDK_SUCCESS;
 cleanup:
-	return returnCode;
+	return retVal;
 }
 
 static UMDKStatus readMemDirect(
 	struct FLContext *handle, uint32 address, uint32 count, uint8 *buf, const char **error)
 {
-	UMDKStatus uStatus, returnCode;
+	UMDKStatus uStatus, retVal;
 	FLStatus fStatus;
 	uint8 flags;
 
 	// Make sure it's an even number of bytes:
-	if ( count & 1 ) {
-		errRender(error, "readMemDirect(): Cannot read an odd number of bytes!");
-		FAIL(UMDK_ALIGN_ERR);
-	}
+	CHECK_STATUS(count & 1, UMDK_ALIGN_ERR, cleanup, "readMemDirect(): Cannot read an odd number of bytes!");
 
 	// Get the flags register:
-	fStatus = flReadRegister(handle, 100, FLAGS_REG, 1, &flags, error);
-	CHECK_STATUS(fStatus, "readMemDirect()", UMDK_FPGALINK_ERR);
+	fStatus = flReadChannel(handle, 100, FLAGS_REG, 1, &flags, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "readMemDirect()");
 
 	// Verify that the MD is in reset or has relinquished the bus
-	if ( (flags & FLAG_RUN) && !(flags & FLAG_HACK) ) {
-		errRender(error, "readMemDirect(): Bus not under host control!");
-		FAIL(UMDK_BUS_ERR);
-	}
+	CHECK_STATUS(
+		(flags & FLAG_RUN) && !(flags & FLAG_HACK),
+		UMDK_BUS_ERR, cleanup, "readMemDirect(): Bus not under host control!");
 
+	// Do the read
 	uStatus = setAddress(handle, address, error);
-	CHECK_STATUS(uStatus, "readMemDirect()", uStatus);
-	fStatus = flReadRegister(handle, 30000, DATA_REG, count, buf, error);
-	CHECK_STATUS(fStatus, "readMemDirect()", UMDK_FPGALINK_ERR);
-	return UMDK_SUCCESS;
+	CHECK_STATUS(uStatus, uStatus, cleanup, "readMemDirect()");
+	fStatus = flReadChannel(handle, 30000, DATA_REG, count, buf, error);
+	CHECK_STATUS(fStatus, UMDK_FPGALINK_ERR, cleanup, "readMemDirect()");
+	retVal = UMDK_SUCCESS;
 cleanup:
-	return returnCode;
+	return retVal;
 }
 
 // Actually do the write:
@@ -496,8 +490,8 @@ static void memWrite(struct I68K *self, uint32 address, uint32 length, const uin
 		}
 
 		// Let MD run...
-		umdk->flagByte &= ~FLAG_HREQ;
-		if ( flWriteRegister(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+		umdk->flagByte = (uint8)(umdk->flagByte & ~FLAG_HREQ);
+		if ( flWriteChannel(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 			goto cleanup;
 		}
 		
@@ -514,7 +508,6 @@ cleanup:
 
 // Read some data from memory:
 static void memRead(struct I68K *self, uint32 address, uint32 length, uint8 *buf) {
-	UMDKStatus uStatus;
 	const char *error;
 	if ( length ) {
 		struct UMDK *umdk = (struct UMDK *)self;
@@ -525,7 +518,7 @@ static void memRead(struct I68K *self, uint32 address, uint32 length, uint8 *buf
 		//   address space, it should probably drop to the indirect addressing method.
 		if ( address < 0x800000 ) {
 			// This memory is directly accessible
-			uStatus = readMemDirect(umdk->fpga, address, length, buf, &error);
+			readMemDirect(umdk->fpga, address, length, buf, &error);
 		} else {
 			// This memory needs to be copied by the MD into an accessible area
 			uint8 cmdBlock[CMDBLK_SIZE + length];
@@ -536,8 +529,8 @@ static void memRead(struct I68K *self, uint32 address, uint32 length, uint8 *buf
 			}
 
 			// Let MD run...
-			umdk->flagByte &= ~FLAG_HREQ;
-			if ( flWriteRegister(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+			umdk->flagByte = (uint8)(umdk->flagByte & ~FLAG_HREQ);
+			if ( flWriteChannel(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 				goto cleanup;
 			}
 			
@@ -581,14 +574,14 @@ static I68KStatus execStep(struct I68K *self) {
 		if ( writeMemDirect(umdk->fpga, CMDBLK_BASE, CMDBLK_SIZE, cmdBlock, &error) ) {
 			goto cleanup;
 		}
-		umdk->flagByte &= ~FLAG_HREQ;
-		if ( flWriteRegister(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+		umdk->flagByte = (uint8)(umdk->flagByte & ~FLAG_HREQ);
+		if ( flWriteChannel(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 			goto cleanup;
 		}
 	} else {
 		// MD in RESET - just set it running
-		umdk->flagByte |= FLAG_RUN;
-		if ( flWriteRegister(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+		umdk->flagByte = (uint8)(umdk->flagByte | FLAG_RUN);
+		if ( flWriteChannel(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 			goto cleanup;
 		}
 	}
@@ -620,14 +613,14 @@ static I68KStatus execCont(struct I68K *self) {
 		if ( writeMemDirect(umdk->fpga, CMDBLK_BASE, CMDBLK_SIZE, cmdBlock, &error) ) {
 			goto cleanup;
 		}
-		umdk->flagByte &= ~FLAG_HREQ;
-		if ( flWriteRegister(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+		umdk->flagByte = (uint8)(umdk->flagByte & ~FLAG_HREQ);
+		if ( flWriteChannel(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 			goto cleanup;
 		}
 	} else {
 		// MD in RESET - just set it running
 		umdk->flagByte |= FLAG_RUN;
-		if ( flWriteRegister(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+		if ( flWriteChannel(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 			goto cleanup;
 		}
 	}
@@ -712,7 +705,7 @@ struct I68K *umdkCreate(
 	umdk->flagByte = 0x00;
 	if ( xsvfFile ) {
 		// Don't care whether the FPGA is running or not, load it anyway:
-		if ( flPlayXSVF(fpga, xsvfFile, &error) ) {
+		if ( flProgram(fpga, xsvfFile, NULL, &error) ) {
 			goto cleanup;
 		}
 	} else {
@@ -725,7 +718,7 @@ struct I68K *umdkCreate(
 			goto cleanup;
 		}
 	}
-	if ( flWriteRegister(fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+	if ( flWriteChannel(fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 		goto cleanup;
 	}
 	if ( writeMemDirect(fpga, MONITOR_BASE, monitorCodeSize, monitorCodeData, &error) ) {
@@ -747,7 +740,7 @@ struct I68K *umdkCreate(
 		flFreeFile(romData);
 		if ( startRunning ) {
 			umdk->flagByte |= FLAG_RUN;
-			if ( flWriteRegister(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
+			if ( flWriteChannel(umdk->fpga, 100, FLAGS_REG, 1, &umdk->flagByte, &error) ) {
 				goto cleanup;
 			}
 		}

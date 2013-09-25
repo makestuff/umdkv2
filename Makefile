@@ -26,7 +26,7 @@ LINK_EXTRALIBS_DBG := $(LINK_EXTRALIBS_REL)
 
 -include $(ROOT)/common/top.mk
 
-MKMON := mkmon/$(PLATFORM)/rel/mkmon$(EXE)
+MKMON := mkmon/$(PM)/rel/mkmon$(EXE)
 
 gen_mon: FORCE
 	make -C mkmon rel

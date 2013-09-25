@@ -25,9 +25,6 @@ $(TARGET).elf: crt0.o $(CC_OBJS)
 	$(TOOLS)-gcc $(CC_FLAGS) -o $@ $<
 
 clean: FORCE
-	rm -f crt0.s *.o *.elf *.bin *.lst
-
-crt0.s:
-	wget -nv -O crt0.s 'http://www.megadrive.org/cvsweb.cgi/libmd/crt0.s?rev=HEAD;content-type=text%2Fplain'
+	rm -f *.o *.elf *.bin *.lst
 
 FORCE:

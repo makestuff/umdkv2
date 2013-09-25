@@ -30,7 +30,7 @@ static void memRead(struct I68K *self, uint32 address, uint32 length, uint8 *buf
 	mux->emul->vt->memRead(mux->emul, address, length, buf);
 	mux->umdk->vt->memRead(mux->umdk, address, length, tmp);
 	if ( memcmp(buf, tmp, length) ) {
-		printf("memRead(0x%08lX, 0x%08lX):\n  emul:", address, length);
+		printf("memRead(0x%08X, 0x%08X):\n  emul:", address, length);
 		dumpSimple(buf, length);
 		printf("\n  umdk:");
 		dumpSimple(tmp, length);
@@ -52,7 +52,7 @@ static uint32 getReg(struct I68K *self, Register reg) {
 	emulValue = mux->emul->vt->getReg(mux->emul, reg);
 	umdkValue = mux->umdk->vt->getReg(mux->umdk, reg);
 	if ( emulValue != umdkValue ) {
-		printf("getReg(%d):\n  emul: 0x%08lX\n  umdk: 0x%08lX\n", reg, emulValue, umdkValue);
+		printf("getReg(%d):\n  emul: 0x%08X\n  umdk: 0x%08X\n", reg, emulValue, umdkValue);
 	}
 	return emulValue;
 }
@@ -61,8 +61,9 @@ static uint32 getReg(struct I68K *self, Register reg) {
 static I68KStatus execStep(struct I68K *self) {
 	struct Multiplex *mux = (struct Multiplex *)self;
 	I68KStatus emulStatus, umdkStatus;
-	emulStatus = mux->emul->vt->execStep(mux->emul);
+	emulStatus = mux->emul->vt->execStep(mux->emul);  // TODO: WTF is going on here?
 	umdkStatus = mux->umdk->vt->execStep(mux->umdk);
+	(void)umdkStatus;
 	return emulStatus;
 }
 
@@ -70,8 +71,9 @@ static I68KStatus execStep(struct I68K *self) {
 static I68KStatus execCont(struct I68K *self) {
 	struct Multiplex *mux = (struct Multiplex *)self;
 	I68KStatus emulStatus, umdkStatus;
-	emulStatus = mux->emul->vt->execCont(mux->emul);
+	emulStatus = mux->emul->vt->execCont(mux->emul);  // TODO: WTF is going on here?
 	umdkStatus = mux->umdk->vt->execCont(mux->umdk);
+	(void)umdkStatus;
 	return emulStatus;
 }
 

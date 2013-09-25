@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <makestuff.h>
 #include "starcpu.h"
 #include "emul.h"
@@ -11,23 +12,23 @@
 static uint8 memory[MEM_SIZE];
 static struct STARSCREAM_PROGRAMREGION programfetch[] = {
 	{0x000000, MEM_SIZE - 1, (uint32)memory},
-	{-1, -1, 0UL}
+	{UINT_MAX, UINT_MAX, 0UL}
 };
 static struct STARSCREAM_DATAREGION readbyte[] = {
 	{0x000000, MEM_SIZE - 1, NULL, memory},
-	{-1, -1, NULL, NULL}
+	{UINT_MAX, UINT_MAX, NULL, NULL}
 };
 static struct STARSCREAM_DATAREGION readword[] = {
 	{0x000000, MEM_SIZE-1, NULL, memory},
-	{-1, -1, NULL, NULL}
+	{UINT_MAX, UINT_MAX, NULL, NULL}
 };
 static struct STARSCREAM_DATAREGION writebyte[] = {
 	{0x000000, MEM_SIZE-1, NULL, memory},
-	{-1, -1, NULL, NULL}
+	{UINT_MAX, UINT_MAX, NULL, NULL}
 };
 static struct STARSCREAM_DATAREGION writeword[] = {
 	{0x000000, MEM_SIZE-1, NULL, memory},
-	{-1, -1, NULL, NULL}
+	{UINT_MAX, UINT_MAX, NULL, NULL}
 };
 
 // The Starscream execution context

@@ -56,7 +56,7 @@ static int parseList(const char *buf, const char **endPtr, ...) {
 	va_start(vl, endPtr);
 	ptr = va_arg(vl, uint32*);
 	while ( ptr ) {
-		sep = va_arg(vl, int);
+		sep = (char)va_arg(vl, int);
 		*ptr = strtoul(buf, &end, 16);
 		if ( !end || *end != sep ) {
 			return -1;
@@ -74,7 +74,7 @@ static int parseList(const char *buf, const char **endPtr, ...) {
 static void checksum(char *message) {
 	uint8 checksum = 0;
 	while ( *message != '#' ) {
-		checksum += *message;
+		checksum = (uint8)(checksum + *message);
 		message++;
 	}
 	message++;
@@ -104,7 +104,7 @@ static int cmdReadRegister(const char *cmd, int conn, struct I68K *cpu) {
 	reg = strtoul(cmd, NULL, 16);
 	if ( reg < 18 ) {
 		val = cpu->vt->getReg(cpu, reg);
-		sprintf(response, "+$%08lX#", val);
+		sprintf(response, "+$%08X#", val);
 		checksum(response + 2);
 		return write(conn, response, 13);
 	} else {
@@ -116,7 +116,7 @@ static int cmdReadRegisters(int conn, struct I68K *cpu) {
 	char response[2+8*18+3];
 	const struct I68K_VT *const vt = cpu->vt;
 	sprintf(
-		response, "+$%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX%08lX#",
+		response, "+$%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X#",
 		vt->getReg(cpu, 0), vt->getReg(cpu, 1), vt->getReg(cpu, 2), vt->getReg(cpu, 3),
 		vt->getReg(cpu, 4), vt->getReg(cpu, 5), vt->getReg(cpu, 6), vt->getReg(cpu, 7),
 		vt->getReg(cpu, 8), vt->getReg(cpu, 9), vt->getReg(cpu, 10), vt->getReg(cpu, 11),
@@ -136,15 +136,15 @@ static int cmdWriteMemory(const char *cmd, int conn, struct I68K *cpu) {
 	}
 	numBytes = length;
 	while ( numBytes-- ) {
-		byte = *binPtr++;
+		byte = (uint8)*binPtr++;
 		if ( byte == '}' ) {
 			// An escaped byte follows; unescape it
-			byte = *binPtr++ | 0x20;
+			byte = (uint8)(*binPtr++ | 0x20);
 		}
 		*binary++ = byte;
 	}
 	if ( address & 1 || length & 1 ) {
-		printf("Nonaligned write: %lu bytes to 0x%08lX\n", length, address);
+		printf("Nonaligned write: %du bytes to 0x%08X\n", length, address);
 	}
 	cpu->vt->memWrite(cpu, address, length, ioBuf);
 	return write(conn, VL(RESPONSE_OK));
@@ -161,7 +161,7 @@ static int cmdReadMemory(const char *cmd, int conn, struct I68K *cpu) {
 		return -8;
 	}
 	if ( address & 1 || length & 1 ) {
-		printf("Nonaligned read: %lu bytes from 0x%08lX\n", length, address);
+		printf("Nonaligned read: %du bytes from 0x%08X\n", length, address);
 	}
 	cpu->vt->memRead(cpu, address, length, ioBuf);
 	binPtr = ioBuf;
@@ -173,14 +173,14 @@ static int cmdReadMemory(const char *cmd, int conn, struct I68K *cpu) {
 		byte = *binPtr++;
 		textPtr[0] = hexDigits[byte >> 4];
 		textPtr[1] = hexDigits[byte & 0x0F];
-		checksum += textPtr[0];
-		checksum += textPtr[1];
+		checksum = (uint8)(checksum + textPtr[0]);
+		checksum = (uint8)(checksum + textPtr[1]);
 		textPtr += 2;
 	}
 	*textPtr++ = '#';
 	*textPtr++ = hexDigits[checksum >> 4];
 	*textPtr++ = hexDigits[checksum & 0x0F];
-	return write(conn, msgBuf, textPtr-msgBuf);
+	return write(conn, msgBuf, (size_t)(textPtr-msgBuf));
 }
 
 static int cmdCreateBreakpoint(const char *cmd, int conn, struct I68K *cpu) {
