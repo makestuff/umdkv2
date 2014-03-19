@@ -13,7 +13,7 @@ Preparation:
   sudo apt-get install build-essential libreadline-dev libusb-1.0-0-dev python-yaml
   mkdir $HOME/20140311
   cd $HOME/20140311
-  wget http://makestuff.eu/bil
+  wget -qO- http://makestuff.eu/bil | tar zxf -
   cd makestuff/
   scripts/msget.sh makestuff/hdlmake/20140311
   cd hdlmake/apps
