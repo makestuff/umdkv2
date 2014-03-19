@@ -1,0 +1,5 @@
+setMode -bs
+setCable -port xsvf -file fpga.xsvf
+addDevice -p 1 -file top_level.bit
+program -p 1
+quit

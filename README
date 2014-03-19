@@ -1,0 +1,50 @@
+LX9R3-BASED USB MEGADRIVE DEVKIT
+
+You'll need an lx9/r3 board:
+
+  https://github.com/makestuff/lx9/tree/r3
+
+...and a umdkv2-lx9/r1 board:
+
+  https://github.com/makestuff/umdkv2-lx9/tree/r1
+
+You can build the VHDL like this:
+
+  cd vhdl
+  ../../../../bin/hdlmake.py -t ../templates/fx2min/vhdl -b lx9r3 -p fpga
+
+You can build the loader like this:
+
+  cd ../loader
+  make deps
+
+You can use the loader to run a game like this:
+
+  lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:../vhdl/fpga.xsvf -f sonic1.bin
+
+You can verify the ROM data of a running game like this:
+
+  lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -c
+
+You can run a low-level SDRAM test using flcli from the FPGALink project, like this:
+
+  dd if=/dev/urandom of=random.bin bs=1024 count=16384
+  flcli -v 1d50:602b:0002 -p J:A7A0A3A1:fpga.xsvf
+  flcli -v 1d50:602b:0002 -a 'w0 0000000080800000;w0 "random.bin"' -b
+  flcli -v 1d50:602b:0002 -a 'w0 0000000040800000;r0 1000000 "out.bin"' -b
+  diff out.bin random.bin
+
+The ROM load/save and reset-control functionality may be used from flcli too:
+
+  # Load Sonic image and verify
+  flcli -v 1d50:602b:0002 -a 'w0 0000000080040000;w0 "sonic1.bin"' -b
+  flcli -v 1d50:602b:0002 -a 'w0 0000000040040000;r0 80000 "out.bin"' -b
+  diff out.bin sonic1.bin
+
+  # Release the MD from reset
+  flcli -v 1d50:602b:0002 -a 'w1 00'
+
+  # Put the MD back in reset
+  flcli -v 1d50:602b:0002 -a 'w1 01'
+
+Note that the initial memory-controller command specifies a data-length in 16-bit words, not bytes.

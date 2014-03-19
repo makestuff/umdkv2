@@ -1,0 +1,146 @@
+#
+# Copyright (C) 2009-2012 Chris McClelland
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+#===============================================================================
+# USB interface
+#===============================================================================
+NET "fx2Clk_in"       TNM_NET="fx2Clk_grp" | LOC="P123" | IOSTANDARD=LVTTL;   # IFCLK
+NET "fx2FifoSel_out"  TNM="fx2_grp" | LOC="P104" | IOSTANDARD=LVTTL;   # PA4/FIFOADR1
+
+NET "fx2Data_io<0>"   TNM="fx2_grp" | LOC="P121" | IOSTANDARD=LVTTL;   # PB0/FD0
+NET "fx2Data_io<1>"   TNM="fx2_grp" | LOC="P120" | IOSTANDARD=LVTTL;   # PB1/FD1
+NET "fx2Data_io<2>"   TNM="fx2_grp" | LOC="P119" | IOSTANDARD=LVTTL;   # PB2/FD2
+NET "fx2Data_io<3>"   TNM="fx2_grp" | LOC="P118" | IOSTANDARD=LVTTL;   # PB3/FD3
+NET "fx2Data_io<4>"   TNM="fx2_grp" | LOC="P117" | IOSTANDARD=LVTTL;   # PB4/FD4
+NET "fx2Data_io<5>"   TNM="fx2_grp" | LOC="P116" | IOSTANDARD=LVTTL;   # PB5/FD5
+NET "fx2Data_io<6>"   TNM="fx2_grp" | LOC="P115" | IOSTANDARD=LVTTL;   # PB6/FD6
+NET "fx2Data_io<7>"   TNM="fx2_grp" | LOC="P114" | IOSTANDARD=LVTTL;   # PB7/FD7
+
+NET "fx2Read_out"     TNM="fx2_grp" | LOC="P105" | IOSTANDARD=LVTTL;   # RDY0/SLRD
+NET "fx2GotData_in"   TNM="fx2_grp" | LOC="P111" | IOSTANDARD=LVTTL;   # CTL2/FLAGC
+
+NET "fx2Write_out"    TNM="fx2_grp" | LOC="P101" | IOSTANDARD=LVTTL;   # RDY1/SLWR
+NET "fx2GotRoom_in"   TNM="fx2_grp" | LOC="P112" | IOSTANDARD=LVTTL;   # CTL1/FLAGB
+NET "fx2PktEnd_out"   TNM="fx2_grp" | LOC="P102" | IOSTANDARD=LVTTL;   # PA6/PKTEND
+
+#===============================================================================
+# SDRAM
+#===============================================================================
+NET "ramClk_out"      TNM="ram_grp" | LOC="P58"  | IOSTANDARD=LVTTL;
+
+NET "ramCmd_out<0>"   TNM="ram_grp" | LOC="P78"  | IOSTANDARD=LVTTL;
+NET "ramCmd_out<1>"   TNM="ram_grp" | LOC="P75"  | IOSTANDARD=LVTTL;
+NET "ramCmd_out<2>"   TNM="ram_grp" | LOC="P74"  | IOSTANDARD=LVTTL;
+
+NET "ramBank_out<0>"  TNM="ram_grp" | LOC="P69"  | IOSTANDARD=LVTTL;
+NET "ramBank_out<1>"  TNM="ram_grp" | LOC="P67"  | IOSTANDARD=LVTTL;
+
+NET "ramAddr_out<0>"  TNM="ram_grp" | LOC="P62"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<1>"  TNM="ram_grp" | LOC="P61"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<2>"  TNM="ram_grp" | LOC="P60"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<3>"  TNM="ram_grp" | LOC="P59"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<4>"  TNM="ram_grp" | LOC="P57"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<5>"  TNM="ram_grp" | LOC="P56"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<6>"  TNM="ram_grp" | LOC="P55"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<7>"  TNM="ram_grp" | LOC="P51"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<8>"  TNM="ram_grp" | LOC="P50"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<9>"  TNM="ram_grp" | LOC="P48"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<10>" TNM="ram_grp" | LOC="P66"  | IOSTANDARD=LVTTL;
+NET "ramAddr_out<11>" TNM="ram_grp" | LOC="P47"  | IOSTANDARD=LVTTL;
+
+NET "ramData_io<0>"   TNM="rio_grp" | LOC="P88"  | IOSTANDARD=LVTTL;
+NET "ramData_io<1>"   TNM="rio_grp" | LOC="P87"  | IOSTANDARD=LVTTL;
+NET "ramData_io<2>"   TNM="rio_grp" | LOC="P85"  | IOSTANDARD=LVTTL;
+NET "ramData_io<3>"   TNM="rio_grp" | LOC="P84"  | IOSTANDARD=LVTTL;
+NET "ramData_io<4>"   TNM="rio_grp" | LOC="P83"  | IOSTANDARD=LVTTL;
+NET "ramData_io<5>"   TNM="rio_grp" | LOC="P82"  | IOSTANDARD=LVTTL;
+NET "ramData_io<6>"   TNM="rio_grp" | LOC="P81"  | IOSTANDARD=LVTTL;
+NET "ramData_io<7>"   TNM="rio_grp" | LOC="P80"  | IOSTANDARD=LVTTL;
+NET "ramData_io<8>"   TNM="rio_grp" | LOC="P100" | IOSTANDARD=LVTTL;
+NET "ramData_io<9>"   TNM="rio_grp" | LOC="P99"  | IOSTANDARD=LVTTL;
+NET "ramData_io<10>"  TNM="rio_grp" | LOC="P98"  | IOSTANDARD=LVTTL;
+NET "ramData_io<11>"  TNM="rio_grp" | LOC="P97"  | IOSTANDARD=LVTTL;
+NET "ramData_io<12>"  TNM="rio_grp" | LOC="P95"  | IOSTANDARD=LVTTL;
+NET "ramData_io<13>"  TNM="rio_grp" | LOC="P94"  | IOSTANDARD=LVTTL;
+NET "ramData_io<14>"  TNM="rio_grp" | LOC="P93"  | IOSTANDARD=LVTTL;
+NET "ramData_io<15>"  TNM="rio_grp" | LOC="P92"  | IOSTANDARD=LVTTL;
+
+NET "ramLDQM_out"     TNM="ram_grp" | LOC="P79"  | IOSTANDARD=LVTTL;
+NET "ramUDQM_out"     TNM="ram_grp" | LOC="P46"  | IOSTANDARD=LVTTL;
+
+#===============================================================================
+# MegaDrive
+#===============================================================================
+NET "mdReset_out"     LOC="P144" | IOSTANDARD=LVTTL;
+NET "mdDriveBus_out"  LOC="P40"  | IOSTANDARD=LVTTL;
+NET "mdDTACK_out"     LOC="P39"  | IOSTANDARD=LVTTL;
+
+NET "mdOE_in"         LOC="P11"  | IOSTANDARD=LVTTL;
+NET "mdAS_in"         LOC="P14"  | IOSTANDARD=LVTTL;
+NET "mdLDSW_in"       LOC="P15"  | IOSTANDARD=LVTTL;
+NET "mdUDSW_in"       LOC="P16"  | IOSTANDARD=LVTTL;
+
+NET "mdAddr_in<0>"    LOC="P12"  | IOSTANDARD=LVTTL;  # 23 address lines
+NET "mdAddr_in<1>"    LOC="P9"   | IOSTANDARD=LVTTL;
+NET "mdAddr_in<2>"    LOC="P7"   | IOSTANDARD=LVTTL;
+NET "mdAddr_in<3>"    LOC="P2"   | IOSTANDARD=LVTTL;
+NET "mdAddr_in<4>"    LOC="P141" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<5>"    LOC="P137" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<6>"    LOC="P133" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<7>"    LOC="P131" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<8>"    LOC="P127" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<9>"    LOC="P126" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<10>"   LOC="P132" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<11>"   LOC="P134" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<12>"   LOC="P139" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<13>"   LOC="P143" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<14>"   LOC="P6"   | IOSTANDARD=LVTTL;
+NET "mdAddr_in<15>"   LOC="P8"   | IOSTANDARD=LVTTL;
+NET "mdAddr_in<16>"   LOC="P10"  | IOSTANDARD=LVTTL;
+NET "mdAddr_in<17>"   LOC="P124" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<18>"   LOC="P138" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<19>"   LOC="P140" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<20>"   LOC="P142" | IOSTANDARD=LVTTL;
+NET "mdAddr_in<21>"   LOC="P1"   | IOSTANDARD=LVTTL;
+NET "mdAddr_in<22>"   LOC="P5"   | IOSTANDARD=LVTTL;
+
+NET "mdData_io<0>"    TNM="mio_grp" | LOC="P21"  | IOSTANDARD=LVTTL;  # 16 data lines
+NET "mdData_io<1>"    TNM="mio_grp" | LOC="P27"  | IOSTANDARD=LVTTL;
+NET "mdData_io<2>"    TNM="mio_grp" | LOC="P34"  | IOSTANDARD=LVTTL;
+NET "mdData_io<3>"    TNM="mio_grp" | LOC="P43"  | IOSTANDARD=LVTTL;
+NET "mdData_io<4>"    TNM="mio_grp" | LOC="P35"  | IOSTANDARD=LVTTL;
+NET "mdData_io<5>"    TNM="mio_grp" | LOC="P33"  | IOSTANDARD=LVTTL;
+NET "mdData_io<6>"    TNM="mio_grp" | LOC="P24"  | IOSTANDARD=LVTTL;
+NET "mdData_io<7>"    TNM="mio_grp" | LOC="P17"  | IOSTANDARD=LVTTL;
+NET "mdData_io<8>"    TNM="mio_grp" | LOC="P22"  | IOSTANDARD=LVTTL;
+NET "mdData_io<9>"    TNM="mio_grp" | LOC="P30"  | IOSTANDARD=LVTTL;
+NET "mdData_io<10>"   TNM="mio_grp" | LOC="P44"  | IOSTANDARD=LVTTL;
+NET "mdData_io<11>"   TNM="mio_grp" | LOC="P41"  | IOSTANDARD=LVTTL;
+NET "mdData_io<12>"   TNM="mio_grp" | LOC="P32"  | IOSTANDARD=LVTTL;
+NET "mdData_io<13>"   TNM="mio_grp" | LOC="P29"  | IOSTANDARD=LVTTL;
+NET "mdData_io<14>"   TNM="mio_grp" | LOC="P26"  | IOSTANDARD=LVTTL;
+NET "mdData_io<15>"   TNM="mio_grp" | LOC="P23"  | IOSTANDARD=LVTTL;
+
+#===============================================================================
+# Timing constraint of FX2 48MHz clock "fx2Clk_in"
+#===============================================================================
+TIMESPEC "TS_clk" = PERIOD "fx2Clk_grp" 20.000 ns HIGH 50 %;
+
+#TIMEGRP rio_grp OFFSET = IN 14 ns VALID 19 ns BEFORE "fx2Clk_in";  # tPER - tAC2 - tCKS = 20.833 - 6 - 4.062
+#TIMEGRP rio_grp OFFSET = OUT 17 ns AFTER "fx2Clk_in";
+#TIMEGRP mio_grp OFFSET = OUT 10 ns AFTER "fx2Clk_in";
+#TIMEGRP ram_grp OFFSET = OUT 17 ns AFTER "fx2Clk_in";
