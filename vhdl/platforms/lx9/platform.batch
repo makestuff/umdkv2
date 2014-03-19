@@ -1,6 +1,0 @@
-setMode -bs
-setCable -port xsvf -file TopLevel.xsvf
-addDevice -p 1 -file TopLevel.bit
-addDevice -p 2 -file ${XILINX}/xcf/data/xcf04s.bsd
-program -p 1
-quit
