@@ -77,12 +77,13 @@ int main(int argc, const char *argv[]) {
 	status = flInitialise(0, &error);
 	CHECK_STATUS(status, 10, cleanup);
 	
-	printf("Attempting to open connection to FPGALink device %s...\n", vp);
-	status = flOpen(vp, &handle, NULL);
-	if ( status ) {
+	printf("Checking for presence of FPGALink device %s...\n", vp);
+	status = flIsDeviceAvailable(vp, &flag, &error);
+	CHECK_STATUS(status, 12, cleanup);
+	if ( !flag ) {
 		if ( ivp ) {
 			int count = 60;
-			printf("Loading firmware into %s...\n", ivp);
+			printf("FPGALink device not found; loading firmware into %s...\n", ivp);
 			status = flLoadStandardFirmware(ivp, vp, &error);
 			CHECK_STATUS(status, 11, cleanup);
 			
@@ -101,15 +102,14 @@ int main(int argc, const char *argv[]) {
 				fprintf(stderr, "FPGALink device did not renumerate properly as %s\n", vp);
 				FAIL(13, cleanup);
 			}
-			
-			printf("Attempting to open connection to FPGLink device %s again...\n", vp);
-			status = flOpen(vp, &handle, &error);
-			CHECK_STATUS(status, 14, cleanup);
 		} else {
 			fprintf(stderr, "Could not open FPGALink device at %s and no initial VID:PID was supplied\n", vp);
 			FAIL(15, cleanup);
 		}
 	}
+	printf("Attempting to open connection to FPGLink device %s...\n", vp);
+	status = flOpen(vp, &handle, &error);
+	CHECK_STATUS(status, 14, cleanup);
 	
 	if ( progConfig ) {
 		printf("Executing programming configuration \"%s\" on FPGALink device %s...\n", progConfig, vp);
@@ -117,81 +117,83 @@ int main(int argc, const char *argv[]) {
 		CHECK_STATUS(status, 19, cleanup);
 	}
 	
-	printf("Loading %s...\n", dataFile);
-	fileBuffer = flLoadFile(dataFile, &numBytes);
-	if ( !fileBuffer ) {
-		fprintf(stderr, "Unable to load file %s!\n", dataFile);
-		FAIL(25, cleanup);
-	}
-	if ( numBytes & 1 ) {
-		fprintf(stderr, "File %s contains an odd number of bytes!\b", dataFile);
-		FAIL(26, cleanup);
-	}
-
-	status = flSelectConduit(handle, 0x01, &error);
-	CHECK_STATUS(status, 21, cleanup);
-	
-	if ( !compare ) {
-		printf("Putting MD in reset...\n");
-		byte = 0x01;
-		status = flWriteChannel(handle, 0x01, 1, &byte, &error);
-		CHECK_STATUS(status, 22, cleanup);
-	}
-
-	numWords = numBytes / 2;
-	command[0] = command[1] = command[2] = command[3] = 0x00;
-	command[7] = (uint8)numWords;
-	numWords >>= 8;
-	command[6] = (uint8)numWords;
-	numWords >>= 8;
-	command[5] = (uint8)numWords;
-	if ( compare ) {
-		printf("Comparing ROM...\n");
-		command[4] = 0x40;
-		status = flWriteChannel(handle, 0x00, 8, command, &error);
-		CHECK_STATUS(status, 22, cleanup);
-		readBuffer = malloc(numBytes);
-		if ( !readBuffer ) {
+	if ( dataFile ) {
+		printf("Loading %s...\n", dataFile);
+		fileBuffer = flLoadFile(dataFile, &numBytes);
+		if ( !fileBuffer ) {
 			fprintf(stderr, "Unable to load file %s!\n", dataFile);
 			FAIL(25, cleanup);
 		}
-		status = flReadChannel(handle, 0x00, numBytes, readBuffer, &error);
-		CHECK_STATUS(status, 22, cleanup);
-
-		numSame = 0;
-		for ( i = 0; i < numBytes; i++ ) {
-			if ( readBuffer[i] == fileBuffer[i] ) {
-				numSame++;
-			}
+		if ( numBytes & 1 ) {
+			fprintf(stderr, "File %s contains an odd number of bytes!\b", dataFile);
+			FAIL(26, cleanup);
 		}
-		printf("Memory is %0.5f%% identical\n", 100.0 * (double)numSame/(double)numBytes);
-		if ( numSame != numBytes ) {
-			FILE *dumpFile = fopen("out.dat", "wb");
-			size_t numWritten;
-			if ( !dumpFile ) {
-				fprintf(stderr, "Dump file cannot be written!\n");
-				FAIL(26, cleanup);
-			}
-			numWritten = fwrite(readBuffer, 1, numBytes, dumpFile);
-			if ( numWritten != numBytes ) {
-				fprintf(stderr, "Wrote only %zu bytes to dump file (expected to write %zu)!\n", numWritten, numBytes);
-				FAIL(26, cleanup);
-			}
-			printf("Diffs found, so I saved the readback data to out.dat\n");
-		}
-
-	} else {
-		printf("Writing ROM...\n");
-		command[4] = 0x80;
-		status = flWriteChannel(handle, 0x00, 8, command, &error);
-		CHECK_STATUS(status, 22, cleanup);
-		status = flWriteChannel(handle, 0x00, numBytes, fileBuffer, &error);
-		CHECK_STATUS(status, 22, cleanup);
 		
-		printf("Releasing MD from reset...\n");
-		byte = 0x00;
-		status = flWriteChannel(handle, 0x01, 1, &byte, &error);
-		CHECK_STATUS(status, 22, cleanup);
+		status = flSelectConduit(handle, 0x01, &error);
+		CHECK_STATUS(status, 21, cleanup);
+		
+		if ( !compare ) {
+			printf("Putting MD in reset...\n");
+			byte = 0x01;
+			status = flWriteChannel(handle, 0x01, 1, &byte, &error);
+			CHECK_STATUS(status, 22, cleanup);
+		}
+		
+		numWords = numBytes / 2;
+		command[0] = command[1] = command[2] = command[3] = 0x00;
+		command[7] = (uint8)numWords;
+		numWords >>= 8;
+		command[6] = (uint8)numWords;
+		numWords >>= 8;
+		command[5] = (uint8)numWords;
+		if ( compare ) {
+			printf("Comparing ROM...\n");
+			command[4] = 0x40;
+			status = flWriteChannel(handle, 0x00, 8, command, &error);
+			CHECK_STATUS(status, 22, cleanup);
+			readBuffer = malloc(numBytes);
+			if ( !readBuffer ) {
+				fprintf(stderr, "Unable to load file %s!\n", dataFile);
+				FAIL(25, cleanup);
+			}
+			status = flReadChannel(handle, 0x00, numBytes, readBuffer, &error);
+			CHECK_STATUS(status, 22, cleanup);
+			
+			numSame = 0;
+			for ( i = 0; i < numBytes; i++ ) {
+				if ( readBuffer[i] == fileBuffer[i] ) {
+					numSame++;
+				}
+			}
+			printf("Memory is %0.5f%% identical\n", 100.0 * (double)numSame/(double)numBytes);
+			if ( numSame != numBytes ) {
+				FILE *dumpFile = fopen("out.dat", "wb");
+				size_t numWritten;
+				if ( !dumpFile ) {
+					fprintf(stderr, "Dump file cannot be written!\n");
+					FAIL(26, cleanup);
+				}
+				numWritten = fwrite(readBuffer, 1, numBytes, dumpFile);
+				if ( numWritten != numBytes ) {
+					fprintf(stderr, "Wrote only %zu bytes to dump file (expected to write %zu)!\n", numWritten, numBytes);
+					FAIL(26, cleanup);
+				}
+				printf("Diffs found, so I saved the readback data to out.dat\n");
+			}
+			
+		} else {
+			printf("Writing ROM...\n");
+			command[4] = 0x80;
+			status = flWriteChannel(handle, 0x00, 8, command, &error);
+			CHECK_STATUS(status, 22, cleanup);
+			status = flWriteChannel(handle, 0x00, numBytes, fileBuffer, &error);
+			CHECK_STATUS(status, 22, cleanup);
+			
+			printf("Releasing MD from reset...\n");
+			byte = 0x00;
+			status = flWriteChannel(handle, 0x01, 1, &byte, &error);
+			CHECK_STATUS(status, 22, cleanup);
+		}
 	}
 	retVal = 0;
 cleanup:
@@ -206,14 +208,13 @@ cleanup:
 }
 
 void usage(const char *prog) {
-	printf("Usage: %s [-h] [-i <VID:PID>] -v <VID:PID> [-d <portConfig>]\n", prog);
-	printf("          [-q <jtagPort>] [-p <progConfig>] [-f <dataFile>]\n\n");
+	printf("Usage: %s [-ch] [-i <VID:PID>] -v <VID:PID> [-p <progConfig>]\n", prog);
+	printf("          [-f <dataFile>]\n\n");
 	printf("Load FX2LP firmware, load the FPGA, interact with the FPGA.\n\n");
 	printf("  -i <VID:PID>    initial vendor and product ID of the FPGALink device\n");
 	printf("  -v <VID:PID>    renumerated vendor and product ID of the FPGALink device\n");
-	printf("  -d <portConfig> configure the ports\n");
-	printf("  -q <jtagPort>   scan the JTAG chain\n");
 	printf("  -p <progConfig> configuration and programming file\n");
-	printf("  -f <dataFile>   binary data to write to channel 0\n");
+	printf("  -f <dataFile>   ROM to load\n");
+	printf("  -c              compare what's in memory with what's in the file\n");
 	printf("  -h              print this help and exit\n");
 }

@@ -8,6 +8,18 @@ You'll need an lx9/r3 board:
 
   https://github.com/makestuff/umdkv2-lx9/tree/r1
 
+Preparation:
+
+  sudo apt-get install build-essential libreadline-dev libusb-1.0-0-dev python-yaml
+  mkdir $HOME/20140311
+  cd $HOME/20140311
+  wget http://makestuff.eu/bil
+  cd makestuff/
+  scripts/msget.sh makestuff/hdlmake/20140311
+  cd hdlmake/apps
+  ../bin/hdlmake.py -g makestuff/umdkv2
+  cd makestuff/umdkv2
+
 You can build the VHDL like this:
 
   cd vhdl
@@ -20,9 +32,13 @@ You can build the loader like this:
 
 You can use the loader to run a game like this:
 
-  lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:../vhdl/fpga.xsvf -f sonic1.bin
+  # Load microcontroller & FPGA:
+  lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:../vhdl/fpga.xsvf
 
-You can verify the ROM data of a running game like this:
+  # Load ROM & start it running:
+  lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin
+
+You can verify the ROM data of a running game against the original ROM file like this:
 
   lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -c
 
