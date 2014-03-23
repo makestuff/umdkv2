@@ -138,7 +138,7 @@ NET "mdData_io<15>"   TNM="mio_grp" | LOC="P23"  | IOSTANDARD=LVTTL;
 #===============================================================================
 # Timing constraint of FX2 48MHz clock "fx2Clk_in"
 #===============================================================================
-TIMESPEC "TS_clk" = PERIOD "fx2Clk_grp" 20.000 ns HIGH 50 %;
+TIMESPEC "TS_clk" = PERIOD "fx2Clk_grp" 20.833 ns HIGH 50 %;
 
 #TIMEGRP rio_grp OFFSET = IN 14 ns VALID 19 ns BEFORE "fx2Clk_in";  # tPER - tAC2 - tCKS = 20.833 - 6 - 4.062
 #TIMEGRP rio_grp OFFSET = OUT 17 ns AFTER "fx2Clk_in";

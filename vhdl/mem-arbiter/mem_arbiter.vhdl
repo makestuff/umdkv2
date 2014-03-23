@@ -51,7 +51,11 @@ entity mem_arbiter is
 		mcAddr_out     : out std_logic_vector(22 downto 0);
 		mcData_out     : out std_logic_vector(15 downto 0);
 		mcData_in      : in  std_logic_vector(15 downto 0);
-		mcRDV_in       : in  std_logic
+		mcRDV_in       : in  std_logic;
+
+		-- Trace pipe
+		traceData_out  : out std_logic_vector(39 downto 0);
+		traceValid_out : out std_logic
 	);
 end entity;
 
@@ -74,6 +78,8 @@ architecture rtl of mem_arbiter is
 	signal state_next   : StateType;
 	signal dataReg      : std_logic_vector(15 downto 0) := (others => '0');
 	signal dataReg_next : std_logic_vector(15 downto 0);
+	signal addrReg      : std_logic_vector(21 downto 0) := (others => '0');
+	signal addrReg_next : std_logic_vector(21 downto 0);
 
 	-- Synchronise mdOE_in to sysClk
 	signal mdOE_sync    : std_logic := '1';
@@ -88,12 +94,14 @@ begin
 			if ( reset_in = '1' ) then
 				state <= S_RESET;
 				dataReg <= (others => '0');
+				addrReg <= (others => '0');
 				mdAddr_sync <= (others => '0');
 				mdOE_sync <= '1';
 				mdDriveBus_sync <= '0';
 			else
 				state <= state_next;
 				dataReg <= dataReg_next;
+				addrReg <= addrReg_next;
 				mdAddr_sync <= mdAddr_in;
 				mdOE_sync <= mdOE_in;
 				mdDriveBus_sync <= mdDriveBus;
@@ -102,12 +110,13 @@ begin
 	end process;
 
 	process(
-		state, dataReg, mdDriveBus_sync, mdOE_sync, mdAddr_sync, mcReady_in, ppCmd_in, ppAddr_in, ppData_in, mcData_in, mcRDV_in,
+		state, dataReg, addrReg, mdDriveBus_sync, mdAS_in, mdLDSW_in, mdOE_sync, mdAddr_sync, mcReady_in, ppCmd_in, ppAddr_in, ppData_in, mcData_in, mcRDV_in,
 		mdReset_in)
 	begin
 		-- Local register defaults
 		state_next <= state;
 		dataReg_next <= dataReg;
+		addrReg_next <= addrReg;
 
 		-- Memory controller defaults
 		mcAutoMode_out <= '0';  -- don't auto-refresh by default.
@@ -119,6 +128,10 @@ begin
 		ppData_out <= (others => 'X');
 		ppReady_out <= '0';
 		ppRDV_out <= '0';
+
+		-- Trace defaults
+		traceData_out <= (others => 'X');
+		traceValid_out <= '0';
 
 		-- State machine
 		case state is
@@ -144,6 +157,8 @@ begin
 				if ( mcRDV_in = '1' ) then
 					state_next <= S_NOP1;
 					dataReg_next <= mcData_in;
+					traceData_out <= "00" & addrReg & mcData_in;
+					traceValid_out <= '1';
 				end if;
 
 			when S_NOP1 =>
@@ -191,6 +206,7 @@ begin
 					state_next <= S_WAIT_READ;
 					mcCmd_out <= MC_RD;
 					mcAddr_out <= mdAddr_sync;
+					addrReg_next <= mdAddr_sync(21 downto 0);
 				end if;
 				if ( mdReset_in = '1' ) then
 					-- MD back in reset, so give host full control again

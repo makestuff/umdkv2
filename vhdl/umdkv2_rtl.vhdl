@@ -111,6 +111,15 @@ architecture structural of umdkv2 is
 	signal reg1       : std_logic_vector(0 downto 0) := "1";
 	signal reg1_next  : std_logic_vector(0 downto 0);
 
+	-- Trace data
+	signal trc40Data  : std_logic_vector(39 downto 0);
+	signal trc40Valid : std_logic;
+	signal trc8Data   : std_logic_vector(7 downto 0);
+	signal trc8Valid  : std_logic;
+	signal trcData    : std_logic_vector(7 downto 0);
+	signal trcValid   : std_logic;
+	signal trcReady   : std_logic;
+	
 	-- Readable versions of external driven signals
 	signal mdReset    : std_logic;
 begin
@@ -136,6 +145,9 @@ begin
 	rspReady <=
 		f2hReady_in when chanAddr_in = "0000000"
 		else '0';
+	trcReady <=
+		f2hReady_in when chanAddr_in = "0000010"
+		else '0';
 
 	-- Connect channel 1 & 2 writes to regular registers
 	reg1_next <=
@@ -152,12 +164,14 @@ begin
 	with chanAddr_in select f2hData_out <=
 		rspData          when "0000000",
 		"0000000" & reg1 when "0000001",
+		trcData          when "0000010",
 		x"00"            when others;
 	
 	-- Generate valid signal for responding to host reads
 	with chanAddr_in select f2hValid_out <=
 		rspValid when "0000000",
 		'1'      when "0000001",
+		trcValid when "0000010",
 		'0'      when others;
 
 	-- Command Pipe FIFO
@@ -287,7 +301,11 @@ begin
 			mdOE_in        => mdOE_in,
 			mdAS_in        => mdAS_in,
 			mdLDSW_in      => mdLDSW_in,
-			mdUDSW_in      => mdUDSW_in
+			mdUDSW_in      => mdUDSW_in,
+
+			-- Trace pipe
+			traceData_out  => trc40Data,
+			traceValid_out => trc40Valid
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
@@ -317,6 +335,35 @@ begin
 			ramData_io    => ramData_io,
 			ramLDQM_out   => ramLDQM_out,
 			ramUDQM_out   => ramUDQM_out
+		);
+	
+	-- Trace Pipe 40->8 converter
+	trace_conv: entity work.conv_40to8
+		port map(
+			clk_in      => clk_in,
+			reset_in    => '0',
+			data40_in   => trc40Data,
+			valid40_in  => trc40Valid,
+			ready40_out => open,
+			data8_out   => trc8Data,
+			valid8_out  => trc8Valid,
+			ready8_in   => '1'
+		);
+
+	-- Trace FIFO
+	trace_fifo: entity work.trace_fifo_wrapper
+		port map(
+			clk_in      => clk_in,
+			
+			-- Production end
+			inputData_in => trc8Data,
+			inputValid_in => trc8Valid,
+			inputReady_out => open,  -- if it fills up we're screwed anyway
+
+			-- Consumption end
+			outputData_out => trcData,
+			outputValid_out => trcValid,
+			outputReady_in => trcReady
 		);
 
 	-- Drive MegaDrive RESET line

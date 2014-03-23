@@ -20,27 +20,27 @@ Preparation:
   ../bin/hdlmake.py -g makestuff/umdkv2
   cd makestuff/umdkv2
 
-You can build the VHDL like this:
-
-  cd vhdl
-  ../../../../bin/hdlmake.py -t ../templates/fx2min/vhdl -b lx9r3 -p fpga
-
 You can build the loader like this:
 
-  cd ../loader
+  cd loader
   make deps
+
+You can build the VHDL like this:
+
+  cd ../vhdl
+  ../../../../bin/hdlmake.py -t ../templates/fx2min/vhdl -b lx9r3 -p fpga
 
 You can use the loader to run a game like this:
 
   # Load microcontroller & FPGA:
-  lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:../vhdl/fpga.xsvf
+  ../loader/lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:fpga.xsvf
 
   # Load ROM & start it running:
-  lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin
+  ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin
 
 You can verify the ROM data of a running game against the original ROM file like this:
 
-  lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -c
+  ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -c
 
 You can run a low-level SDRAM test using flcli from the FPGALink project, like this:
 
