@@ -144,3 +144,4 @@ TIMESPEC "TS_clk" = PERIOD "fx2Clk_grp" 20.833 ns HIGH 50 %;
 #TIMEGRP rio_grp OFFSET = OUT 17 ns AFTER "fx2Clk_in";
 #TIMEGRP mio_grp OFFSET = OUT 10 ns AFTER "fx2Clk_in";
 #TIMEGRP ram_grp OFFSET = OUT 17 ns AFTER "fx2Clk_in";
+TIMEGRP mio_grp OFFSET = OUT 15 ns AFTER "fx2Clk_in";
