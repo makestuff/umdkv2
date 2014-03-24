@@ -2,26 +2,35 @@
 #include <stdlib.h>
 #include <libfpgalink.h>
 
-int main(void) {
+int main(int argc, char *argv[]) {
 	int retVal = 0;
 	FILE *file = NULL;
+	uint8 *romData = NULL;
+	size_t romSize;
+	const char *romFile;
+	const char *dumpFile;
 	uint8 line[5];
 	size_t bytesRead;
 	uint32 addr;
 	uint16 readWord, romWord;
-	size_t romSize;
-	uint8 *romData = flLoadFile("/home/chris/megadrive/sonic2.bin", &romSize);
-	if ( !romData ) {
-		fprintf(stderr, "Cannot load image file!\n");
+	if ( argc != 3 ) {
+		fprintf(stderr, "Synopsis: logread <romFile> <dumpFile>\n");
 		FAIL(1, cleanup);
 	}
-	file = fopen("dump.dat", "rb");
-	if ( !file ) {
-		fprintf(stderr, "Cannot load dump.dat!\n");
+	romFile = argv[1];
+	dumpFile = argv[2];
+	romData = flLoadFile(romFile, &romSize);
+	if ( !romData ) {
+		fprintf(stderr, "Cannot load ROM image file \"%s\"!\n", romFile);
 		FAIL(2, cleanup);
 	}
-	while ( !feof(file) ) {
-		bytesRead = fread(line, 1, 5, file);
+	file = fopen(dumpFile, "rb");
+	if ( !file ) {
+		fprintf(stderr, "Cannot load dump file \"%s\"!\n", dumpFile);
+		FAIL(3, cleanup);
+	}
+	bytesRead = fread(line, 1, 5, file);
+	while ( bytesRead == 5 ) {
 		addr = line[0] & 0x3f;
 		addr <<= 8;
 		addr |= line[1];
@@ -41,9 +50,12 @@ int main(void) {
 				printf("%01X %06X %04X %04X *\n", line[0] >> 6, addr, readWord, romWord);
 			}
 		}
+		bytesRead = fread(line, 1, 5, file);
 	}
 cleanup:
-	fclose(file);
+	if ( file ) {
+		fclose(file);
+	}
 	flFreeFile(romData);
 	return retVal;
 }
