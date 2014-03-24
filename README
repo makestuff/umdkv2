@@ -32,10 +32,19 @@ You can build the VHDL like this:
   cd ../vhdl
   ../../../../bin/hdlmake.py -t ../templates/fx2min/vhdl -b lx9r3 -p fpga
 
-You can use the loader to run a game like this:
+You can verify the SDRAM like this:
 
   # Load microcontroller & FPGA:
   ../loader/lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:fpga.xsvf
+
+  # Load random data:
+  dd if=/dev/urandom of=random.bin bs=1024 count=16384
+  ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f random.bin
+
+  # Verify it
+  ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f random.bin -c
+
+You can run a game like this:
 
   # Load ROM & start it running:
   ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -s
@@ -55,7 +64,7 @@ You can build the "dis68" utility to make sense of the execution trace
   scripts/build-gdb.sh
   /usr/local/bin/dis68 sonic1.bin 0x206 10
 
-You can run a low-level SDRAM test using flcli from the FPGALink project, like this:
+You can also do everything at a lower level using flcli from the FPGALink project:
 
   dd if=/dev/urandom of=random.bin bs=1024 count=16384
   flcli -v 1d50:602b:0002 -p J:A7A0A3A1:fpga.xsvf

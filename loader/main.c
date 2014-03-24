@@ -84,19 +84,27 @@ int main(int argc, const char *argv[]) {
 		missing(prog, "v <VID:PID>");
 		FAIL(3, cleanup);
 	}
-
+	if ( compare && startRunning ) {
+		fprintf(stderr, "C'mon dude, think about it: it makes no sense to give -c AND -s!\n");
+		FAIL(4, cleanup);
+	}
+	if ( execTrace && !progConfig ) {
+		// TODO: This is a temporary limitation.
+		fprintf(stderr, "To ensure the trace FIFO starts empty, you should only use -t with -p.\n");
+		FAIL(5, cleanup);
+	}
 	status = flInitialise(0, &error);
-	CHECK_STATUS(status, 4, cleanup);
+	CHECK_STATUS(status, 6, cleanup);
 	
 	printf("Checking for presence of FPGALink device %s...\n", vp);
 	status = flIsDeviceAvailable(vp, &flag, &error);
-	CHECK_STATUS(status, 5, cleanup);
+	CHECK_STATUS(status, 7, cleanup);
 	if ( !flag ) {
 		if ( ivp ) {
 			int count = 60;
 			printf("FPGALink device not found; loading firmware into %s...\n", ivp);
 			status = flLoadStandardFirmware(ivp, vp, &error);
-			CHECK_STATUS(status, 6, cleanup);
+			CHECK_STATUS(status, 8, cleanup);
 			
 			printf("Awaiting renumeration");
 			flSleep(1000);
@@ -104,28 +112,28 @@ int main(int argc, const char *argv[]) {
 				printf(".");
 				fflush(stdout);
 				status = flIsDeviceAvailable(vp, &flag, &error);
-				CHECK_STATUS(status, 7, cleanup);
+				CHECK_STATUS(status, 9, cleanup);
 				flSleep(250);
 				count--;
 			} while ( !flag && count );
 			printf("\n");
 			if ( !flag ) {
 				fprintf(stderr, "FPGALink device did not renumerate properly as %s\n", vp);
-				FAIL(8, cleanup);
+				FAIL(10, cleanup);
 			}
 		} else {
 			fprintf(stderr, "Could not open FPGALink device at %s and no initial VID:PID was supplied\n", vp);
-			FAIL(9, cleanup);
+			FAIL(11, cleanup);
 		}
 	}
 	printf("Attempting to open connection to FPGLink device %s...\n", vp);
 	status = flOpen(vp, &handle, &error);
-	CHECK_STATUS(status, 10, cleanup);
+	CHECK_STATUS(status, 12, cleanup);
 	
 	if ( progConfig ) {
 		printf("Executing programming configuration \"%s\" on FPGALink device %s...\n", progConfig, vp);
 		status = flProgram(handle, progConfig, NULL, &error);
-		CHECK_STATUS(status, 11, cleanup);
+		CHECK_STATUS(status, 13, cleanup);
 	}
 	
 	if ( dataFile ) {
@@ -133,21 +141,21 @@ int main(int argc, const char *argv[]) {
 		fileBuffer = flLoadFile(dataFile, &numBytes);
 		if ( !fileBuffer ) {
 			fprintf(stderr, "Unable to load file %s!\n", dataFile);
-			FAIL(12, cleanup);
+			FAIL(14, cleanup);
 		}
 		if ( numBytes & 1 ) {
 			fprintf(stderr, "File %s contains an odd number of bytes!\b", dataFile);
-			FAIL(13, cleanup);
+			FAIL(15, cleanup);
 		}
 		
 		status = flSelectConduit(handle, 0x01, &error);
-		CHECK_STATUS(status, 14, cleanup);
+		CHECK_STATUS(status, 16, cleanup);
 		
 		if ( !compare ) {
 			printf("Putting MD in reset...\n");
 			byte = 0x01;
 			status = flWriteChannel(handle, 0x01, 1, &byte, &error);
-			CHECK_STATUS(status, 15, cleanup);
+			CHECK_STATUS(status, 17, cleanup);
 		}
 		
 		numWords = numBytes / 2;
@@ -161,14 +169,14 @@ int main(int argc, const char *argv[]) {
 			printf("Comparing ROM...\n");
 			command[4] = 0x40;
 			status = flWriteChannel(handle, 0x00, 8, command, &error);
-			CHECK_STATUS(status, 16, cleanup);
+			CHECK_STATUS(status, 18, cleanup);
 			readBuffer = malloc(numBytes);
 			if ( !readBuffer ) {
 				fprintf(stderr, "Unable to load file %s!\n", dataFile);
-				FAIL(17, cleanup);
+				FAIL(19, cleanup);
 			}
 			status = flReadChannel(handle, 0x00, numBytes, readBuffer, &error);
-			CHECK_STATUS(status, 18, cleanup);
+			CHECK_STATUS(status, 20, cleanup);
 			
 			numSame = 0;
 			for ( i = 0; i < numBytes; i++ ) {
@@ -182,12 +190,12 @@ int main(int argc, const char *argv[]) {
 				size_t numWritten;
 				if ( !dumpFile ) {
 					fprintf(stderr, "Dump file cannot be written!\n");
-					FAIL(19, cleanup);
+					FAIL(21, cleanup);
 				}
 				numWritten = fwrite(readBuffer, 1, numBytes, dumpFile);
 				if ( numWritten != numBytes ) {
 					fprintf(stderr, "Wrote only %zu bytes to dump file (expected to write %zu)!\n", numWritten, numBytes);
-					FAIL(20, cleanup);
+					FAIL(22, cleanup);
 				}
 				printf("Diffs found, so I saved the readback data to out.dat\n");
 			}
@@ -196,15 +204,15 @@ int main(int argc, const char *argv[]) {
 			printf("Writing ROM...\n");
 			command[4] = 0x80;
 			status = flWriteChannel(handle, 0x00, 8, command, &error);
-			CHECK_STATUS(status, 21, cleanup);
+			CHECK_STATUS(status, 23, cleanup);
 			status = flWriteChannel(handle, 0x00, numBytes, fileBuffer, &error);
-			CHECK_STATUS(status, 22, cleanup);
+			CHECK_STATUS(status, 24, cleanup);
 			
 			if ( startRunning ) {
 				printf("Releasing MD from reset...\n");
 				byte = 0x00;
 				status = flWriteChannel(handle, 0x01, 1, &byte, &error);
-				CHECK_STATUS(status, 23, cleanup);
+				CHECK_STATUS(status, 25, cleanup);
 			}
 		}
 	}
@@ -215,23 +223,23 @@ int main(int argc, const char *argv[]) {
 		uint32 actualLength;
 		printf("Dumping execution trace to %s", execTrace);
 		file = fopen(execTrace, "wb");
-		CHECK_STATUS(!file, 24, cleanup);
+		CHECK_STATUS(!file, 26, cleanup);
 		sigRegisterHandler();
 		status = flSelectConduit(handle, 1, &error);
-		CHECK_STATUS(status, 25, cleanup);
+		CHECK_STATUS(status, 27, cleanup);
 		status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, &error);
-		CHECK_STATUS(status, 26, cleanup);
+		CHECK_STATUS(status, 28, cleanup);
 		do {
 			status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, &error);
-			CHECK_STATUS(status, 27, cleanup);
+			CHECK_STATUS(status, 29, cleanup);
 			status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, &error);
-			CHECK_STATUS(status, 28, cleanup);
+			CHECK_STATUS(status, 30, cleanup);
 			fwrite(recvData, 1, actualLength, file);
 			printf(".");
 		} while ( !sigIsRaised() );
 		printf("\nCaught SIGINT, quitting...\n");
 		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, &error);
-		CHECK_STATUS(status, 29, cleanup);
+		CHECK_STATUS(status, 31, cleanup);
 		fwrite(recvData, 1, actualLength, file);
 		fclose(file);
 	}
