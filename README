@@ -20,9 +20,11 @@ Preparation:
   ../bin/hdlmake.py -g makestuff/umdkv2
   cd makestuff/umdkv2
 
-You can build the loader like this:
+You can build the loader & tracer like this:
 
   cd loader
+  make deps
+  cd ../logread
   make deps
 
 You can build the VHDL like this:
@@ -36,11 +38,22 @@ You can use the loader to run a game like this:
   ../loader/lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:fpga.xsvf
 
   # Load ROM & start it running:
-  ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin
+  ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -s
 
 You can verify the ROM data of a running game against the original ROM file like this:
 
   ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -c
+
+You can get an execution-trace like this:
+
+  ../loader/lin.x64/rel/loader -i 04b4:8613 -v 1d50:602b:0002 -p J:A7A0A3A1:fpga.xsvf
+  ../loader/lin.x64/rel/loader -v 1d50:602b:0002 -f sonic1.bin -s -t trace.bin
+  ../logread/lin.x64/rel/logread sonic1.bin trace.bin | less
+
+You can build the "dis68" utility to make sense of the execution trace
+
+  scripts/build-gdb.sh
+  /usr/local/bin/dis68 sonic1.bin 0x206 10
 
 You can run a low-level SDRAM test using flcli from the FPGALink project, like this:
 
