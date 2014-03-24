@@ -40,7 +40,7 @@ NET "fx2PktEnd_out"   TNM="fx2_grp" | LOC="P102" | IOSTANDARD=LVTTL;   # PA6/PKT
 #===============================================================================
 # SDRAM
 #===============================================================================
-NET "ramClk_out"      TNM="ram_grp" | LOC="P58"  | IOSTANDARD=LVTTL;
+NET "ramClk_out"      LOC="P58"  | IOSTANDARD=LVTTL;
 
 NET "ramCmd_out<0>"   TNM="ram_grp" | LOC="P78"  | IOSTANDARD=LVTTL;
 NET "ramCmd_out<1>"   TNM="ram_grp" | LOC="P75"  | IOSTANDARD=LVTTL;
@@ -143,5 +143,5 @@ TIMESPEC "TS_clk" = PERIOD "fx2Clk_grp" 20.833 ns HIGH 50 %;
 #TIMEGRP rio_grp OFFSET = IN 14 ns VALID 19 ns BEFORE "fx2Clk_in";  # tPER - tAC2 - tCKS = 20.833 - 6 - 4.062
 #TIMEGRP rio_grp OFFSET = OUT 17 ns AFTER "fx2Clk_in";
 #TIMEGRP mio_grp OFFSET = OUT 10 ns AFTER "fx2Clk_in";
-#TIMEGRP ram_grp OFFSET = OUT 17 ns AFTER "fx2Clk_in";
+TIMEGRP ram_grp OFFSET = OUT 15 ns AFTER "fx2Clk_in";
 TIMEGRP mio_grp OFFSET = OUT 15 ns AFTER "fx2Clk_in";
