@@ -112,8 +112,8 @@ architecture structural of umdkv2 is
 	signal reg1_next  : std_logic_vector(0 downto 0);
 
 	-- Trace data
-	signal trc40Data  : std_logic_vector(39 downto 0);
-	signal trc40Valid : std_logic;
+	signal trc48Data  : std_logic_vector(47 downto 0);
+	signal trc48Valid : std_logic;
 	signal trc8Data   : std_logic_vector(7 downto 0);
 	signal trc8Valid  : std_logic;
 	signal trcData    : std_logic_vector(7 downto 0);
@@ -304,8 +304,8 @@ begin
 			mdUDSW_in      => mdUDSW_in,
 
 			-- Trace pipe
-			traceData_out  => trc40Data,
-			traceValid_out => trc40Valid
+			traceData_out  => trc48Data,
+			traceValid_out => trc48Valid
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
@@ -337,14 +337,14 @@ begin
 			ramUDQM_out   => ramUDQM_out
 		);
 	
-	-- Trace Pipe 40->8 converter
-	trace_conv: entity work.conv_40to8
+	-- Trace Pipe 48->8 converter
+	trace_conv: entity work.conv_48to8
 		port map(
 			clk_in      => clk_in,
 			reset_in    => '0',
-			data40_in   => trc40Data,
-			valid40_in  => trc40Valid,
-			ready40_out => open,
+			data48_in   => trc48Data,
+			valid48_in  => trc48Valid,
+			ready48_out => open,
 			data8_out   => trc8Data,
 			valid8_out  => trc8Valid,
 			ready8_in   => '1'

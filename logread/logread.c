@@ -9,10 +9,10 @@ int main(int argc, char *argv[]) {
 	size_t romSize;
 	const char *romFile;
 	const char *dumpFile;
-	uint8 line[5];
+	uint8 line[6];
 	size_t bytesRead;
 	uint32 addr;
-	uint16 readWord, romWord;
+	uint16 readWord, romWord, flags;
 	if ( argc != 3 ) {
 		fprintf(stderr, "Synopsis: logread <romFile> <dumpFile>\n");
 		FAIL(1, cleanup);
@@ -29,28 +29,30 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Cannot load dump file \"%s\"!\n", dumpFile);
 		FAIL(3, cleanup);
 	}
-	bytesRead = fread(line, 1, 5, file);
-	while ( bytesRead == 5 ) {
-		addr = line[0] & 0x3f;
-		addr <<= 8;
-		addr |= line[1];
+	bytesRead = fread(line, 1, 6, file);
+	while ( bytesRead == 6 ) {
+		flags = line[0] << 1;
+		flags |= (line[1] >> 7);
+		addr = line[1] & 0x7f;
 		addr <<= 8;
 		addr |= line[2];
+		addr <<= 8;
+		addr |= line[3];
 		addr <<= 1;
-		readWord = line[3] << 8;
-		readWord |= line[4];
+		readWord = line[4] << 8;
+		readWord |= line[5];
 		if ( addr >= romSize ) {
-			printf("%01X %06X %04X XXXX\n", line[0] >> 6, addr, readWord);
+			printf("%03X %06X %04X XXXX\n", flags, addr, readWord);
 		} else {
 			romWord = romData[addr] << 8;
 			romWord |= romData[addr+1];
 			if ( romWord == readWord ) {
-				printf("%01X %06X %04X %04X\n", line[0] >> 6, addr, readWord, romWord);
+				printf("%03X %06X %04X %04X\n", flags, addr, readWord, romWord);
 			} else {
-				printf("%01X %06X %04X %04X *\n", line[0] >> 6, addr, readWord, romWord);
+				printf("%03X %06X %04X %04X *\n", flags, addr, readWord, romWord);
 			}
 		}
-		bytesRead = fread(line, 1, 5, file);
+		bytesRead = fread(line, 1, 6, file);
 	}
 cleanup:
 	if ( file ) {

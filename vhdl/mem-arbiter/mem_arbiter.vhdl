@@ -54,7 +54,7 @@ entity mem_arbiter is
 		mcRDV_in       : in  std_logic;
 
 		-- Trace pipe
-		traceData_out  : out std_logic_vector(39 downto 0);
+		traceData_out  : out std_logic_vector(47 downto 0);
 		traceValid_out : out std_logic
 	);
 end entity;
@@ -63,14 +63,19 @@ architecture rtl of mem_arbiter is
 	type RStateType is (
 		R_RESET,  -- MD in reset, host has access to SDRAM
 		R_IDLE,   -- wait for mdOE_sync to go low when A22='0', indicating a MD cart read
-		R_WAIT_READ,
+
+		-- Reading from 0x000000 - 0x7FFFFF (cartridge SDRAM)
+		R_WAIT_READ_LOW,
 		R_NOP1,
 		R_NOP2,
 		R_NOP3,
 		R_NOP4,
 		R_EXEC_REFRESH,
 		R_WAIT_REFRESH,
-		R_WAIT_MD
+		R_WAIT_MD,
+
+		-- Reading from 0x800000 - 0xFFFFFF (MD RAM & h/w registers)
+		R_WAIT_READ_HIGH
 	);
 	type MStateType is (
 		M_IDLE,
@@ -158,11 +163,11 @@ begin
 				end if;
 
 			-- Wait until the in-progress read completes, then register the result and proceed.
-			when R_WAIT_READ =>
+			when R_WAIT_READ_LOW =>
 				if ( mcRDV_in = '1' ) then
 					rstate_next <= R_NOP1;
 					dataReg_next <= mcData_in;
-					traceData_out <= "00" & addrReg & mcData_in;
+					traceData_out <= "0000000000" & addrReg & mcData_in;
 					traceValid_out <= '1';
 				end if;
 
@@ -204,14 +209,27 @@ begin
 					rstate_next <= R_IDLE;
 				end if;
 
+			when R_WAIT_READ_HIGH =>
+				if ( mdOE_sync = '1' ) then
+					rstate_next <= R_IDLE;
+					traceData_out <= "000000000" & mdAddr_sync & mdData_io;
+					traceValid_out <= '1';
+				end if;
+
 			-- R_IDLE & others
 			when others =>
-				if ( mdOE_sync = '0' and mdAddr_sync(22) = '0' ) then
-					-- MD is reading from cartridge space
-					rstate_next <= R_WAIT_READ;
-					mcCmd_out <= MC_RD;
-					mcAddr_out <= mdAddr_sync;
-					addrReg_next <= mdAddr_sync(21 downto 0);
+				if ( mdOE_sync = '0' ) then
+					if ( mdAddr_sync(22) = '0' ) then
+						-- MD is reading from cartridge space
+						rstate_next <= R_WAIT_READ_LOW;
+						mcCmd_out <= MC_RD;
+						mcAddr_out <= mdAddr_sync;
+						addrReg_next <= mdAddr_sync(21 downto 0);
+					else
+						-- MD is reading from onboard RAM or hardware
+						rstate_next <= R_WAIT_READ_HIGH;
+						addrReg_next <= mdAddr_sync(21 downto 0);
+					end if;
 				end if;
 				if ( mdReset_in = '1' ) then
 					-- MD back in reset, so give host full control again
