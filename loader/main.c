@@ -211,7 +211,7 @@ int main(int argc, const char *argv[]) {
 			if ( startRunning ) {
 				printf("Releasing MD from reset...\n");
 				byte = 0x00;
-				status = flWriteChannel(handle, 0x01, 1, &byte, &error);
+				status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
 				CHECK_STATUS(status, 25, cleanup);
 			}
 		}
