@@ -75,7 +75,10 @@ architecture rtl of mem_arbiter is
 		R_WAIT_MD,
 
 		-- Reading from 0x800000 - 0xFFFFFF (MD RAM & h/w registers)
-		R_WAIT_READ_HIGH
+		R_WAIT_READ_HIGH,
+
+		-- Writing somewhere
+		R_WAIT_WRITE_HIGH
 	);
 	type MStateType is (
 		M_IDLE,
@@ -90,12 +93,19 @@ architecture rtl of mem_arbiter is
 	signal mstate_next  : MStateType;
 	signal dataReg      : std_logic_vector(15 downto 0) := (others => '0');
 	signal dataReg_next : std_logic_vector(15 downto 0);
-	signal addrReg      : std_logic_vector(21 downto 0) := (others => '0');
-	signal addrReg_next : std_logic_vector(21 downto 0);
+	signal addrReg      : std_logic_vector(22 downto 0) := (others => '0');
+	signal addrReg_next : std_logic_vector(22 downto 0);
+	signal mdAS         : std_logic;
+	signal mdAS_next    : std_logic;
 
-	-- Synchronise mdOE_in to sysClk
+	-- Synchronise MegaDrive signals to sysClk
+	signal mdAS_sync    : std_logic := '1';
 	signal mdOE_sync    : std_logic := '1';
+	signal mdDSW_sync1  : std_logic_vector(1 downto 0) := "00";
+	signal mdDSW_sync2  : std_logic_vector(1 downto 0) := "00";
 	signal mdAddr_sync  : std_logic_vector(22 downto 0) := (others => '0');
+	signal mdData_sync  : std_logic_vector(15 downto 0) := (others => '0');
+	constant TR_RD      : std_logic_vector(1 downto 0) := "11";
 begin
 	-- Infer registers
 	process(clk_in)
@@ -107,27 +117,40 @@ begin
 				dataReg <= (others => '0');
 				addrReg <= (others => '0');
 				mdAddr_sync <= (others => '0');
+				mdAS_sync <= '1';
 				mdOE_sync <= '1';
+				mdDSW_sync1 <= "00";
+				mdDSW_sync2 <= "00";
+				mdData_sync <= (others => '0');
+				mdAS <= '1';
 			else
 				rstate <= rstate_next;
 				mstate <= mstate_next;
 				dataReg <= dataReg_next;
 				addrReg <= addrReg_next;
 				mdAddr_sync <= mdAddr_in;
+				mdAS_sync <= mdAS_in;
 				mdOE_sync <= mdOE_in;
+				mdDSW_sync1 <= mdUDSW_in & mdLDSW_in;
+				mdDSW_sync2 <= mdDSW_sync1;
+				mdData_sync <= mdData_io;
+				mdAS <= mdAS_next;
 			end if;
 		end if;
 	end process;
 
 	-- RAM handler state-machine
 	process(
-		rstate, dataReg, addrReg, mdOE_sync, mdAddr_sync, mcReady_in, ppCmd_in, ppAddr_in, ppData_in, mcData_in, mcRDV_in,
-		mdReset_in)
+		rstate, dataReg, addrReg,
+		mdOE_sync, mdDSW_sync1, mdDSW_sync2, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
+		mcReady_in, mcData_in, mcRDV_in,
+		ppCmd_in, ppAddr_in, ppData_in)
 	begin
 		-- Local register defaults
 		rstate_next <= rstate;
 		dataReg_next <= dataReg;
 		addrReg_next <= addrReg;
+		mdAS_next <= mdAS;
 
 		-- Memory controller defaults
 		mcAutoMode_out <= '0';  -- don't auto-refresh by default.
@@ -167,7 +190,7 @@ begin
 				if ( mcRDV_in = '1' ) then
 					rstate_next <= R_NOP1;
 					dataReg_next <= mcData_in;
-					traceData_out <= "0000000000" & addrReg & mcData_in;
+					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mcData_in;
 					traceValid_out <= '1';
 				end if;
 
@@ -212,7 +235,14 @@ begin
 			when R_WAIT_READ_HIGH =>
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
-					traceData_out <= "000000000" & mdAddr_sync & mdData_io;
+					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mdData_sync;
+					traceValid_out <= '1';
+				end if;
+
+			when R_WAIT_WRITE_HIGH =>
+				if ( mdDSW_sync1 = "11" ) then
+					rstate_next <= R_IDLE;
+					traceData_out <= "000000" & mdAS & mdDSW_sync2 & addrReg & mdData_sync;
 					traceValid_out <= '1';
 				end if;
 
@@ -224,12 +254,19 @@ begin
 						rstate_next <= R_WAIT_READ_LOW;
 						mcCmd_out <= MC_RD;
 						mcAddr_out <= mdAddr_sync;
-						addrReg_next <= mdAddr_sync(21 downto 0);
+						addrReg_next <= mdAddr_sync;
+						mdAS_next <= mdAS_sync;
 					else
 						-- MD is reading from onboard RAM or hardware
 						rstate_next <= R_WAIT_READ_HIGH;
-						addrReg_next <= mdAddr_sync(21 downto 0);
+						addrReg_next <= mdAddr_sync;
+						mdAS_next <= mdAS_sync;
 					end if;
+				elsif ( mdDSW_sync1 /= "11" ) then
+					-- MD is writing somewhere
+					rstate_next <= R_WAIT_WRITE_HIGH;
+					addrReg_next <= mdAddr_sync;
+					mdAS_next <= mdAS_sync;
 				end if;
 				if ( mdReset_in = '1' ) then
 					-- MD back in reset, so give host full control again
