@@ -33,6 +33,15 @@ entity mem_arbiter is
 		ppData_out     : out std_logic_vector(15 downto 0);
 		ppRDV_out      : out std_logic;
 
+		-- Connection to mem_ctrl
+		mcAutoMode_out : out std_logic;
+		mcReady_in     : in  std_logic;
+		mcCmd_out      : out MCCmdType;
+		mcAddr_out     : out std_logic_vector(22 downto 0);
+		mcData_out     : out std_logic_vector(15 downto 0);
+		mcData_in      : in  std_logic_vector(15 downto 0);
+		mcRDV_in       : in  std_logic;
+
 		-- Connection to MegaDrive
 		mdDriveBus_out : out   std_logic;
 		mdReset_in     : in    std_logic;
@@ -44,16 +53,8 @@ entity mem_arbiter is
 		mdLDSW_in      : in    std_logic;
 		mdUDSW_in      : in    std_logic;
 
-		-- Connection to mem_ctrl
-		mcAutoMode_out : out std_logic;
-		mcReady_in     : in  std_logic;
-		mcCmd_out      : out MCCmdType;
-		mcAddr_out     : out std_logic_vector(22 downto 0);
-		mcData_out     : out std_logic_vector(15 downto 0);
-		mcData_in      : in  std_logic_vector(15 downto 0);
-		mcRDV_in       : in  std_logic;
-
 		-- Trace pipe
+		traceEnable_in : in  std_logic;
 		traceData_out  : out std_logic_vector(47 downto 0);
 		traceValid_out : out std_logic
 	);
@@ -144,7 +145,8 @@ begin
 		rstate, dataReg, addrReg,
 		mdOE_sync, mdDSW_sync1, mdDSW_sync2, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
 		mcReady_in, mcData_in, mcRDV_in,
-		ppCmd_in, ppAddr_in, ppData_in)
+		ppCmd_in, ppAddr_in, ppData_in,
+		traceEnable_in)
 	begin
 		-- Local register defaults
 		rstate_next <= rstate;
@@ -191,7 +193,7 @@ begin
 					rstate_next <= R_NOP1;
 					dataReg_next <= mcData_in;
 					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mcData_in;
-					traceValid_out <= '1';
+					traceValid_out <= traceEnable_in;
 				end if;
 
 			when R_NOP1 =>
@@ -236,14 +238,14 @@ begin
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mdData_sync;
-					traceValid_out <= '1';
+					traceValid_out <= traceEnable_in;
 				end if;
 
 			when R_WAIT_WRITE_HIGH =>
 				if ( mdDSW_sync1 = "11" ) then
 					rstate_next <= R_IDLE;
 					traceData_out <= "000000" & mdAS & mdDSW_sync2 & addrReg & mdData_sync;
-					traceValid_out <= '1';
+					traceValid_out <= traceEnable_in;
 				end if;
 
 			-- R_IDLE & others

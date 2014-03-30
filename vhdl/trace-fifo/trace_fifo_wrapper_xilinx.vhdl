@@ -23,6 +23,7 @@ entity trace_fifo_wrapper is
 	port(
 		-- Clock
 		clk_in          : in  std_logic;
+		depth_out       : out std_logic_vector(13 downto 0);
 
 		-- Data is clocked into the FIFO on each clock edge where both valid & ready are high
 		inputData_in    : in  std_logic_vector(7 downto 0);
@@ -48,6 +49,7 @@ begin
 	fifo : entity work.xilinx_trace_fifo
 		port map(
 			clk        => clk_in,
+			data_count => depth_out,
 
 			-- Production end
 			din        => inputData_in,

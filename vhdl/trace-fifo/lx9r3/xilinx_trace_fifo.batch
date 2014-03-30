@@ -1,7 +1,7 @@
 ##############################################################
 #
 # Xilinx Core Generator version 14.7
-# Date: Sun Mar 23 12:12:46 2014
+# Date: Sun Mar 30 18:55:35 2014
 #
 ##############################################################
 #
@@ -53,7 +53,7 @@ CSET buser_width=1
 CSET clock_enable_type=Slave_Interface_Clock_Enable
 CSET clock_type_axi=Common_Clock
 CSET component_name=xilinx_trace_fifo
-CSET data_count=false
+CSET data_count=true
 CSET data_count_width=14
 CSET disable_timing_violations=false
 CSET disable_timing_violations_axi=false
@@ -211,4 +211,4 @@ CSET wuser_width=1
 MISC pkg_timestamp=2012-11-19T12:39:56Z
 # END Extra information
 GENERATE
-# CRC: 71c5ef97
+# CRC: b927b0b9

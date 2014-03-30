@@ -88,11 +88,6 @@ int main(int argc, const char *argv[]) {
 		fprintf(stderr, "C'mon dude, think about it: it makes no sense to give -c AND -s!\n");
 		FAIL(4, cleanup);
 	}
-	if ( execTrace && !progConfig ) {
-		// TODO: This is a temporary limitation.
-		fprintf(stderr, "To ensure the trace FIFO starts empty, you should only use -t with -p.\n");
-		FAIL(5, cleanup);
-	}
 	status = flInitialise(0, &error);
 	CHECK_STATUS(status, 6, cleanup);
 	
@@ -208,7 +203,7 @@ int main(int argc, const char *argv[]) {
 			status = flWriteChannel(handle, 0x00, numBytes, fileBuffer, &error);
 			CHECK_STATUS(status, 24, cleanup);
 			
-			if ( startRunning ) {
+			if ( !execTrace && startRunning ) {
 				printf("Releasing MD from reset...\n");
 				byte = 0x00;
 				status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
@@ -221,12 +216,46 @@ int main(int argc, const char *argv[]) {
 		FILE *file = NULL;
 		const uint8 *recvData;
 		uint32 actualLength;
-		printf("Dumping execution trace to %s", execTrace);
+		uint8 scrapData[8200];
+		size_t scrapSize;
+		printf("Dumping execution trace to %s\n", execTrace);
 		file = fopen(execTrace, "wb");
 		CHECK_STATUS(!file, 26, cleanup);
 		sigRegisterHandler();
 		status = flSelectConduit(handle, 1, &error);
 		CHECK_STATUS(status, 27, cleanup);
+
+		// Disable tracing (if any) & clear junk from trace FIFO
+		byte = 0x00;
+		status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
+		CHECK_STATUS(status, 25, cleanup);
+		status = flReadChannel(handle, 0x03, 1, &byte, &error);
+		CHECK_STATUS(status, 20, cleanup);
+		scrapSize = byte << 8;
+		status = flReadChannel(handle, 0x04, 1, &byte, &error);
+		CHECK_STATUS(status, 20, cleanup);
+		scrapSize |= byte;
+		//printf("scrapSize = "PFSZD"\n", scrapSize);
+		if ( scrapSize ) {
+			status = flReadChannel(handle, 0x02, scrapSize, scrapData, &error);
+			CHECK_STATUS(status, 20, cleanup);
+		}
+
+		// Verify no junk remaining
+		//status = flReadChannel(handle, 0x03, 1, &byte, &error);
+		//CHECK_STATUS(status, 20, cleanup);
+		//scrapSize = byte << 8;
+		//status = flReadChannel(handle, 0x04, 1, &byte, &error);
+		//CHECK_STATUS(status, 20, cleanup);
+		//scrapSize |= byte;
+		//printf("scrapSize = "PFSZD"\n", scrapSize);
+
+		// Enable tracing
+		byte = 0x02;
+		status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
+		CHECK_STATUS(status, 25, cleanup);
+
+		// Start reading
 		status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, &error);
 		CHECK_STATUS(status, 28, cleanup);
 		do {

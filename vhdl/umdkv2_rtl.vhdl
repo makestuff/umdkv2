@@ -108,8 +108,8 @@ architecture structural of umdkv2 is
 	signal mcRDV      : std_logic;
 
 	-- Registers implementing the channels
-	signal reg1       : std_logic_vector(0 downto 0) := "1";
-	signal reg1_next  : std_logic_vector(0 downto 0);
+	signal reg1       : std_logic_vector(1 downto 0) := "01";
+	signal reg1_next  : std_logic_vector(1 downto 0);
 
 	-- Trace data
 	signal trc48Data  : std_logic_vector(47 downto 0);
@@ -119,6 +119,7 @@ architecture structural of umdkv2 is
 	signal trcData    : std_logic_vector(7 downto 0);
 	signal trcValid   : std_logic;
 	signal trcReady   : std_logic;
+	signal trcDepth   : std_logic_vector(13 downto 0);
 	
 	-- Readable versions of external driven signals
 	signal mdReset    : std_logic;
@@ -128,7 +129,7 @@ begin
 	begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
-				reg1 <= "1";
+				reg1 <= "01";
 			else
 				reg1 <= reg1_next;
 			end if;
@@ -151,7 +152,7 @@ begin
 
 	-- Connect channel 1 & 2 writes to regular registers
 	reg1_next <=
-		h2fData_in(0 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
+		h2fData_in(1 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
 		else reg1;
 
 	-- Generate ready signal for throttling host writes
@@ -162,16 +163,20 @@ begin
 
 	-- Generate data signal for responding to host reads
 	with chanAddr_in select f2hData_out <=
-		rspData          when "0000000",
-		"0000000" & reg1 when "0000001",
-		trcData          when "0000010",
-		x"00"            when others;
+		rspData                      when "0000000",
+		"000000" & reg1              when "0000001",
+		trcData                      when "0000010",
+		"00" & trcDepth(13 downto 8) when "0000011",
+		trcDepth(7 downto 0)         when "0000100",
+		x"00"                        when others;
 	
 	-- Generate valid signal for responding to host reads
 	with chanAddr_in select f2hValid_out <=
 		rspValid when "0000000",
 		'1'      when "0000001",
 		trcValid when "0000010",
+		'1'      when "0000011",
+		'1'      when "0000100",
 		'0'      when others;
 
 	-- Command Pipe FIFO
@@ -304,6 +309,7 @@ begin
 			mdUDSW_in      => mdUDSW_in,
 
 			-- Trace pipe
+			traceEnable_in => reg1(1),
 			traceData_out  => trc48Data,
 			traceValid_out => trc48Valid
 		);
@@ -354,6 +360,7 @@ begin
 	trace_fifo: entity work.trace_fifo_wrapper
 		port map(
 			clk_in      => clk_in,
+			depth_out   => trcDepth,
 			
 			-- Production end
 			inputData_in => trc8Data,

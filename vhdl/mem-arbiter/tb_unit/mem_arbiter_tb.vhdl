@@ -28,53 +28,58 @@ end entity;
 
 architecture behavioural of mem_arbiter_tb is
 	-- Clocks
-	signal sysClk     : std_logic;  -- main system clock
-	signal dispClk    : std_logic;  -- display version of sysClk, which transitions 4ns before it
-	signal reset      : std_logic;
+	signal sysClk      : std_logic;  -- main system clock
+	signal dispClk     : std_logic;  -- display version of sysClk, which transitions 4ns before it
+	signal reset       : std_logic;
 	
 	-- I/O pipes
-	signal cmdData    : std_logic_vector(15 downto 0);
-	signal cmdValid   : std_logic;
-	signal cmdReady   : std_logic;
-	signal rspData    : std_logic_vector(15 downto 0);
-	signal rspValid   : std_logic;
-	signal rspReady   : std_logic;
+	signal cmdData     : std_logic_vector(15 downto 0);
+	signal cmdValid    : std_logic;
+	signal cmdReady    : std_logic;
+	signal rspData     : std_logic_vector(15 downto 0);
+	signal rspValid    : std_logic;
+	signal rspReady    : std_logic;
 	
 	-- Pipe interface
-	signal ppReady    : std_logic;
-	signal ppCmd      : MCCmdType;
-	signal ppAddr     : std_logic_vector(22 downto 0);
-	signal ppDataWr   : std_logic_vector(15 downto 0);
-	signal ppDataRd   : std_logic_vector(15 downto 0);
-	signal ppRDV      : std_logic;
+	signal ppReady     : std_logic;
+	signal ppCmd       : MCCmdType;
+	signal ppAddr      : std_logic_vector(22 downto 0);
+	signal ppDataWr    : std_logic_vector(15 downto 0);
+	signal ppDataRd    : std_logic_vector(15 downto 0);
+	signal ppRDV       : std_logic;
 	
 	-- Memory controller interface
-	signal mcAutoMode : std_logic;
-	signal mcReady    : std_logic;
-	signal mcCmd      : MCCmdType;
-	signal mcAddr     : std_logic_vector(22 downto 0);
-	signal mcDataWr   : std_logic_vector(15 downto 0);
-	signal mcDataRd   : std_logic_vector(15 downto 0);
-	signal mcRDV      : std_logic;
+	signal mcAutoMode  : std_logic;
+	signal mcReady     : std_logic;
+	signal mcCmd       : MCCmdType;
+	signal mcAddr      : std_logic_vector(22 downto 0);
+	signal mcDataWr    : std_logic_vector(15 downto 0);
+	signal mcDataRd    : std_logic_vector(15 downto 0);
+	signal mcRDV       : std_logic;
 	
 	-- SDRAM signals
-	signal ramCmd     : std_logic_vector(2 downto 0);
-	signal ramBank    : std_logic_vector(1 downto 0);
-	signal ramAddr    : std_logic_vector(11 downto 0);
-	signal ramDataIO  : std_logic_vector(15 downto 0);
-	signal ramLDQM    : std_logic;
-	signal ramUDQM    : std_logic;
+	signal ramCmd      : std_logic_vector(2 downto 0);
+	signal ramBank     : std_logic_vector(1 downto 0);
+	signal ramAddr     : std_logic_vector(11 downto 0);
+	signal ramDataIO   : std_logic_vector(15 downto 0);
+	signal ramLDQM     : std_logic;
+	signal ramUDQM     : std_logic;
 
 	-- MegaDrive external interface
-	signal mdDriveBus : std_logic;
-	signal mdReset    : std_logic;
-	signal mdDTACK    : std_logic;
-	signal mdAddr     : std_logic_vector(22 downto 0);
-	signal mdData     : std_logic_vector(15 downto 0);
-	signal mdOE       : std_logic;
-	signal mdAS       : std_logic;
-	signal mdLDSW     : std_logic;
-	signal mdUDSW     : std_logic;
+	signal mdDriveBus  : std_logic;
+	signal mdReset     : std_logic;
+	signal mdDTACK     : std_logic;
+	signal mdAddr      : std_logic_vector(22 downto 0);
+	signal mdData      : std_logic_vector(15 downto 0);
+	signal mdOE        : std_logic;
+	signal mdAS        : std_logic;
+	signal mdLDSW      : std_logic;
+	signal mdUDSW      : std_logic;
+
+	-- Trace pipe
+	signal traceEnable : std_logic;
+	signal traceData   : std_logic_vector(47 downto 0);
+	signal traceValid  : std_logic;
 begin
 	-- Instantiate the memory pipe
 	mem_pipe: entity work.mem_pipe
@@ -131,7 +136,12 @@ begin
 			mdOE_in        => mdOE,
 			mdAS_in        => mdAS,
 			mdLDSW_in      => mdLDSW,
-			mdUDSW_in      => mdUDSW
+			mdUDSW_in      => mdUDSW,
+
+			-- Trace pipe
+			traceEnable_in => traceEnable,
+			traceData_out  => traceData,
+			traceValid_out => traceValid
 		);
 
 	-- Instantiate the memory controller
@@ -220,6 +230,7 @@ begin
 		mdAS <= '1';
 		mdLDSW <= '1';
 		mdUDSW <= '1';
+		traceEnable <= '1';
 
 		-- Simulate load of initial program
 		cmdData <= (others => 'X');
