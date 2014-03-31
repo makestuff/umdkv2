@@ -112,14 +112,18 @@ architecture structural of umdkv2 is
 	signal reg1_next  : std_logic_vector(1 downto 0);
 
 	-- Trace data
+	signal count      : unsigned(31 downto 0) := (others => '0');
+	signal count_next : unsigned(31 downto 0);
 	signal trc48Data  : std_logic_vector(47 downto 0);
 	signal trc48Valid : std_logic;
+	signal trc48Ready : std_logic;
 	signal trc8Data   : std_logic_vector(7 downto 0);
 	signal trc8Valid  : std_logic;
+	signal trc8Ready  : std_logic;
 	signal trcData    : std_logic_vector(7 downto 0);
 	signal trcValid   : std_logic;
 	signal trcReady   : std_logic;
-	signal trcDepth   : std_logic_vector(13 downto 0);
+	signal trcDepth   : std_logic_vector(14 downto 0);
 	
 	-- Readable versions of external driven signals
 	signal mdReset    : std_logic;
@@ -130,46 +134,23 @@ begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
 				reg1 <= "01";
+				count <= (others => '0');
 			else
 				reg1 <= reg1_next;
+				count <= count_next;
 			end if;
 		end if;
 	end process;
 
-	-- Connect channel 0 writes to the SDRAM command pipe and response pipe ready to ch0 read ready
-	cmdData <=
-		h2fData_in when chanAddr_in = "0000000" and h2fValid_in = '1'
-		else (others => 'X');
-	cmdValid <=
-		h2fValid_in when chanAddr_in = "0000000"
-		else '0';
-	rspReady <=
-		f2hReady_in when chanAddr_in = "0000000"
-		else '0';
-	trcReady <=
-		f2hReady_in when chanAddr_in = "0000010"
-		else '0';
-
-	-- Connect channel 1 & 2 writes to regular registers
-	reg1_next <=
-		h2fData_in(1 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
-		else reg1;
-
-	-- Generate ready signal for throttling host writes
-	with chanAddr_in select h2fReady_out <=
-		cmdReady when "0000000",
-		'1'      when "0000001",
-		'0'      when others;
-
-	-- Generate data signal for responding to host reads
+	-- Select values to return for each channel when the host is reading
 	with chanAddr_in select f2hData_out <=
-		rspData                      when "0000000",
-		"000000" & reg1              when "0000001",
-		trcData                      when "0000010",
-		"00" & trcDepth(13 downto 8) when "0000011",
-		trcDepth(7 downto 0)         when "0000100",
-		x"00"                        when others;
-	
+		rspData                     when "0000000",
+		"000000" & reg1             when "0000001",
+		trcData                     when "0000010",
+		"0" & trcDepth(14 downto 8) when "0000011",
+		trcDepth(7 downto 0)        when "0000100",
+		x"00"                       when others;
+
 	-- Generate valid signal for responding to host reads
 	with chanAddr_in select f2hValid_out <=
 		rspValid when "0000000",
@@ -178,6 +159,48 @@ begin
 		'1'      when "0000011",
 		'1'      when "0000100",
 		'0'      when others;
+
+	trcReady <=
+		f2hReady_in when chanAddr_in = "0000010"
+		else '0';
+
+	count_next <=
+		count + 1 when trc48Ready = '1'
+		else count;
+	--trc48Data <= std_logic_vector(count(31 downto 16)) & std_logic_vector(count);
+	--trc48Valid <= not(reset_in);
+
+	-- Trace Pipe 48->8 converter
+	trace_conv: entity work.conv_48to8
+		port map(
+			clk_in      => clk_in,
+			reset_in    => reset_in,
+			
+			data48_in   => trc48Data,
+			valid48_in  => trc48Valid,
+			ready48_out => trc48Ready,
+			
+			data8_out   => trc8Data,
+			valid8_out  => trc8Valid,
+			ready8_in   => trc8Ready
+		);
+
+	-- Trace FIFO
+	trace_fifo: entity work.trace_fifo_wrapper
+		port map(
+			clk_in      => clk_in,
+			depth_out   => trcDepth,
+			
+			-- Production end
+			inputData_in => trc8Data,
+			inputValid_in => trc8Valid,
+			inputReady_out => trc8Ready,
+
+			-- Consumption end
+			outputData_out => trcData,
+			outputValid_out => trcValid,
+			outputReady_in => trcReady
+		);
 
 	-- Command Pipe FIFO
 	cmd_fifo: entity work.fifo
@@ -312,6 +335,8 @@ begin
 			traceEnable_in => reg1(1),
 			traceData_out  => trc48Data,
 			traceValid_out => trc48Valid
+			--traceData_out  => open, --trc48Data,
+			--traceValid_out => open  --trc48Valid
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
@@ -342,36 +367,27 @@ begin
 			ramLDQM_out   => ramLDQM_out,
 			ramUDQM_out   => ramUDQM_out
 		);
-	
-	-- Trace Pipe 48->8 converter
-	trace_conv: entity work.conv_48to8
-		port map(
-			clk_in      => clk_in,
-			reset_in    => '0',
-			data48_in   => trc48Data,
-			valid48_in  => trc48Valid,
-			ready48_out => open,
-			data8_out   => trc8Data,
-			valid8_out  => trc8Valid,
-			ready8_in   => '1'
-		);
 
-	-- Trace FIFO
-	trace_fifo: entity work.trace_fifo_wrapper
-		port map(
-			clk_in      => clk_in,
-			depth_out   => trcDepth,
-			
-			-- Production end
-			inputData_in => trc8Data,
-			inputValid_in => trc8Valid,
-			inputReady_out => open,  -- if it fills up we're screwed anyway
+	reg1_next <=
+		h2fData_in(1 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
+		else reg1;
 
-			-- Consumption end
-			outputData_out => trcData,
-			outputValid_out => trcValid,
-			outputReady_in => trcReady
-		);
+	-- Connect channel 0 writes to the SDRAM command pipe and response pipe ready to ch0 read ready
+	cmdData <=
+		h2fData_in when chanAddr_in = "0000000" and h2fValid_in = '1'
+		else (others => 'X');
+	cmdValid <=
+		h2fValid_in when chanAddr_in = "0000000"
+		else '0';
+	rspReady <=
+		f2hReady_in when chanAddr_in = "0000000"
+		else '0';
+
+	-- Generate ready signal for throttling host writes
+	with chanAddr_in select h2fReady_out <=
+		cmdReady when "0000000",
+		'1'      when "0000001",
+		'0'      when others;
 
 	-- Drive MegaDrive RESET line
 	mdReset     <= reg1(0);  -- MD in reset when R1(0) high
