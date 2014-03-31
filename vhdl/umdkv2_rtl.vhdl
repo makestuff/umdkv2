@@ -112,8 +112,8 @@ architecture structural of umdkv2 is
 	signal reg1_next  : std_logic_vector(1 downto 0);
 
 	-- Trace data
-	signal count      : unsigned(31 downto 0) := (others => '0');
-	signal count_next : unsigned(31 downto 0);
+	--signal count      : unsigned(31 downto 0) := (others => '0');
+	--signal count_next : unsigned(31 downto 0);
 	signal trc48Data  : std_logic_vector(47 downto 0);
 	signal trc48Valid : std_logic;
 	signal trc48Ready : std_logic;
@@ -134,10 +134,10 @@ begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
 				reg1 <= "01";
-				count <= (others => '0');
+				--count <= (others => '0');
 			else
 				reg1 <= reg1_next;
-				count <= count_next;
+				--count <= count_next;
 			end if;
 		end if;
 	end process;
@@ -164,9 +164,9 @@ begin
 		f2hReady_in when chanAddr_in = "0000010"
 		else '0';
 
-	count_next <=
-		count + 1 when trc48Ready = '1'
-		else count;
+	--count_next <=
+	--	count + 1 when trc48Ready = '1'
+	--	else count;
 	--trc48Data <= std_logic_vector(count(31 downto 16)) & std_logic_vector(count);
 	--trc48Valid <= not(reset_in);
 

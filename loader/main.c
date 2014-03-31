@@ -227,7 +227,7 @@ int main(int argc, const char *argv[]) {
 
 		// Disable tracing (if any) & clear junk from trace FIFO
 		byte = 0x00;
-		status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
+		status = flWriteChannel(handle, 0x01, 1, &byte, &error);
 		CHECK_STATUS(status, 25, cleanup);
 		status = flReadChannel(handle, 0x03, 1, &byte, &error);
 		CHECK_STATUS(status, 20, cleanup);
@@ -236,19 +236,20 @@ int main(int argc, const char *argv[]) {
 		CHECK_STATUS(status, 20, cleanup);
 		scrapSize |= byte;
 		//printf("scrapSize = "PFSZD"\n", scrapSize);
-		if ( scrapSize ) {
+		while ( scrapSize ) {
+			// Clear junk from FIFO
 			status = flReadChannel(handle, 0x02, scrapSize, scrapData, &error);
 			CHECK_STATUS(status, 20, cleanup);
-		}
 
-		// Verify no junk remaining
-		//status = flReadChannel(handle, 0x03, 1, &byte, &error);
-		//CHECK_STATUS(status, 20, cleanup);
-		//scrapSize = byte << 8;
-		//status = flReadChannel(handle, 0x04, 1, &byte, &error);
-		//CHECK_STATUS(status, 20, cleanup);
-		//scrapSize |= byte;
-		//printf("scrapSize = "PFSZD"\n", scrapSize);
+			// Verify no junk remaining
+			status = flReadChannel(handle, 0x03, 1, &byte, &error);
+			CHECK_STATUS(status, 20, cleanup);
+			scrapSize = byte << 8;
+			status = flReadChannel(handle, 0x04, 1, &byte, &error);
+			CHECK_STATUS(status, 20, cleanup);
+			scrapSize |= byte;
+			//printf("scrapSize = "PFSZD"\n", scrapSize);
+		}
 
 		// Enable tracing
 		byte = 0x02;

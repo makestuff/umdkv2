@@ -155,7 +155,7 @@ begin
 		port map(
 			D0 => '1',
 			D1 => '0',
-			C0 =>	sysClk000,
+			C0 => sysClk000,
 			C1 => sysClk180,
 			Q  => ramClk_out
 		);
