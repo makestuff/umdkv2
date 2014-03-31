@@ -216,7 +216,7 @@ int main(int argc, const char *argv[]) {
 		FILE *file = NULL;
 		const uint8 *recvData;
 		uint32 actualLength;
-		uint8 scrapData[8200];
+		uint8 scrapData[16400];
 		size_t scrapSize;
 		printf("Dumping execution trace to %s\n", execTrace);
 		file = fopen(execTrace, "wb");
