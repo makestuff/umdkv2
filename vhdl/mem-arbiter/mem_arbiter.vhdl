@@ -65,21 +65,34 @@ architecture rtl of mem_arbiter is
 		R_RESET,  -- MD in reset, host has access to SDRAM
 		R_IDLE,   -- wait for mdOE_sync to go low when A22='0', indicating a MD cart read
 
-		-- Reading from 0x000000 - 0x7FFFFF (cartridge SDRAM)
-		R_READ_LOMEM_WAIT,
-		R_READ_LOMEM_NOP1,
-		R_READ_LOMEM_NOP2,
-		R_READ_LOMEM_NOP3,
-		R_READ_LOMEM_NOP4,
-		R_READ_LOMEM_REF_EXEC,
-		R_READ_LOMEM_REF_WAIT,
-		R_READ_LOMEM_END_WAIT,
+		-- Owned read
+		R_READ_OWNED_WAIT,
+		R_READ_OWNED_NOP1,
+		R_READ_OWNED_NOP2,
+		R_READ_OWNED_NOP3,
+		R_READ_OWNED_NOP4,
+		R_READ_OWNED_REF_EXEC,
+		R_READ_OWNED_REF_WAIT,
+		R_READ_OWNED_END_WAIT,
 
-		-- Reading from 0x800000 - 0xFFFFFF (MD RAM & h/w registers)
-		R_READ_HIMEM_WAIT,
+		-- Foreign read
+		R_READ_OTHER_WAIT,
 
-		-- Writing somewhere
-		R_WRITE_WAIT
+		-- Owned write
+		R_WRITE_OWNED_NOP1,
+		R_WRITE_OWNED_NOP2,
+		R_WRITE_OWNED_NOP3,
+		R_WRITE_OWNED_NOP4,
+		R_WRITE_OWNED_EXEC,
+		R_WRITE_OWNED_WAIT,
+
+		-- Foreign write
+		R_WRITE_OTHER_NOP1,
+		R_WRITE_OTHER_NOP2,
+		R_WRITE_OTHER_NOP3,
+		R_WRITE_OTHER_NOP4,
+		R_WRITE_OTHER_EXEC,
+		R_WRITE_OTHER_WAIT
 	);
 	type MStateType is (
 		M_IDLE,
@@ -102,8 +115,7 @@ architecture rtl of mem_arbiter is
 	-- Synchronise MegaDrive signals to sysClk
 	signal mdAS_sync    : std_logic := '1';
 	signal mdOE_sync    : std_logic := '1';
-	signal mdDSW_sync1  : std_logic_vector(1 downto 0) := "00";
-	signal mdDSW_sync2  : std_logic_vector(1 downto 0) := "00";
+	signal mdDSW_sync   : std_logic_vector(1 downto 0) := "11";
 	signal mdAddr_sync  : std_logic_vector(22 downto 0) := (others => '0');
 	signal mdData_sync  : std_logic_vector(15 downto 0) := (others => '0');
 	constant TR_RD      : std_logic_vector(1 downto 0) := "11";
@@ -120,8 +132,7 @@ begin
 				mdAddr_sync <= (others => '0');
 				mdAS_sync <= '1';
 				mdOE_sync <= '1';
-				mdDSW_sync1 <= "00";
-				mdDSW_sync2 <= "00";
+				mdDSW_sync <= "11";
 				mdData_sync <= (others => '0');
 				mdAS <= '1';
 			else
@@ -132,8 +143,7 @@ begin
 				mdAddr_sync <= mdAddr_in;
 				mdAS_sync <= mdAS_in;
 				mdOE_sync <= mdOE_in;
-				mdDSW_sync1 <= mdUDSW_in & mdLDSW_in;
-				mdDSW_sync2 <= mdDSW_sync1;
+				mdDSW_sync <= mdUDSW_in & mdLDSW_in;
 				mdData_sync <= mdData_io;
 				mdAS <= mdAS_next;
 			end if;
@@ -145,7 +155,7 @@ begin
 	-- #############################################################################################
 	process(
 		rstate, dataReg, addrReg,
-		mdOE_sync, mdDSW_sync1, mdDSW_sync2, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
+		mdOE_sync, mdDSW_sync, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
 		mcReady_in, mcData_in, mcRDV_in,
 		ppCmd_in, ppAddr_in, ppData_in,
 		traceEnable_in)
@@ -196,12 +206,12 @@ begin
 				end if;
 
 			-- -------------------------------------------------------------------------------------
-			-- Wait until the in-progress LOMEM read completes, then register the result, send to
+			-- Wait until the in-progress owned read completes, then register the result, send to
 			-- the trace FIFO and proceed.
 			--
-			when R_READ_LOMEM_WAIT =>
+			when R_READ_OWNED_WAIT =>
 				if ( mcRDV_in = '1' ) then
-					rstate_next <= R_READ_LOMEM_NOP1;
+					rstate_next <= R_READ_OWNED_NOP1;
 					dataReg_next <= mcData_in;
 					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mcData_in;
 					traceValid_out <= traceEnable_in;
@@ -209,47 +219,47 @@ begin
 
 			-- Give the host enough time for one I/O cycle, if it wants it.
 			--
-			when R_READ_LOMEM_NOP1 =>
+			when R_READ_OWNED_NOP1 =>
 				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
-				rstate_next <= R_READ_LOMEM_NOP2;
-			when R_READ_LOMEM_NOP2 =>
-				rstate_next <= R_READ_LOMEM_NOP3;
-			when R_READ_LOMEM_NOP3 =>
-				rstate_next <= R_READ_LOMEM_NOP4;
-			when R_READ_LOMEM_NOP4 =>
+				rstate_next <= R_READ_OWNED_NOP2;
+			when R_READ_OWNED_NOP2 =>
+				rstate_next <= R_READ_OWNED_NOP3;
+			when R_READ_OWNED_NOP3 =>
+				rstate_next <= R_READ_OWNED_NOP4;
+			when R_READ_OWNED_NOP4 =>
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
-				rstate_next <= R_READ_LOMEM_REF_EXEC;
+				rstate_next <= R_READ_OWNED_REF_EXEC;
 				
 			-- Start a refresh cycle, then wait for it to complete.
 			--
-			when R_READ_LOMEM_REF_EXEC =>
-				rstate_next <= R_READ_LOMEM_REF_WAIT;
+			when R_READ_OWNED_REF_EXEC =>
+				rstate_next <= R_READ_OWNED_REF_WAIT;
 				mcCmd_out <= MC_REF;
-			when R_READ_LOMEM_REF_WAIT =>
+			when R_READ_OWNED_REF_WAIT =>
 				if ( mcReady_in = '1' ) then
 					if ( mdOE_sync = '1' ) then
 						rstate_next <= R_IDLE;
 					else
-						rstate_next <= R_READ_LOMEM_END_WAIT;
+						rstate_next <= R_READ_OWNED_END_WAIT;
 					end if;
 				end if;
 
 			-- If /OE is still asserted, wait for it to deassert before going back to R_IDLE.
 			--
-			when R_READ_LOMEM_END_WAIT =>
+			when R_READ_OWNED_END_WAIT =>
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 				end if;
 
 			-- -------------------------------------------------------------------------------------
-			-- Wait for the in-progress HIMEM read to complete, then send to the trace FIFO and go
+			-- Wait for the in-progress foreign read to complete, then send to the trace FIFO and go
 			-- back to R_IDLE.
 			--
-			when R_READ_HIMEM_WAIT =>
+			when R_READ_OTHER_WAIT =>
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mdData_sync;
@@ -257,14 +267,68 @@ begin
 				end if;
 
 			-- -------------------------------------------------------------------------------------
-			-- Wait for the in-progress write to complete, then send to the trace FIFO and go back
-			-- to R_IDLE.
+			-- An owned write has been requested, but things are not yet stable so give the host
+			-- enough time for one I/O cycle, if it wants it - this will provide enough of a delay
+			-- for the write masks and data to stabilise.
 			--
-			when R_WRITE_WAIT =>
-				if ( mdDSW_sync1 = "11" ) then
+			when R_WRITE_OWNED_NOP1 =>
+				ppReady_out <= mcReady_in;
+				mcCmd_out <= ppCmd_in;
+				mcAddr_out <= ppAddr_in;
+				mcData_out <= ppData_in;
+				rstate_next <= R_WRITE_OWNED_NOP2;
+			when R_WRITE_OWNED_NOP2 =>
+				rstate_next <= R_WRITE_OWNED_NOP3;
+			when R_WRITE_OWNED_NOP3 =>
+				rstate_next <= R_WRITE_OWNED_NOP4;
+			when R_WRITE_OWNED_NOP4 =>
+				ppData_out <= mcData_in;
+				ppRDV_out <= mcRDV_in;
+				rstate_next <= R_WRITE_OWNED_EXEC;
+
+			-- -------------------------------------------------------------------------------------
+			-- Now execute the owned write. TODO: actually do the write, dummy.
+			--
+			when R_WRITE_OWNED_EXEC =>
+				rstate_next <= R_WRITE_OWNED_WAIT;
+				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceValid_out <= traceEnable_in;
+			when R_WRITE_OWNED_WAIT =>
+				if ( mdDSW_sync = "11" ) then
 					rstate_next <= R_IDLE;
-					traceData_out <= "000000" & mdAS & mdDSW_sync2 & addrReg & mdData_sync;
-					traceValid_out <= traceEnable_in;
+				end if;
+
+			-- -------------------------------------------------------------------------------------
+			-- A foreign write has been requested, but things are not yet stable so give the host
+			-- enough time for one I/O cycle, if it wants it - this will provide enough of a delay
+			-- for the write masks and data to stabilise.
+			--
+			when R_WRITE_OTHER_NOP1 =>
+				ppReady_out <= mcReady_in;
+				mcCmd_out <= ppCmd_in;
+				mcAddr_out <= ppAddr_in;
+				mcData_out <= ppData_in;
+				rstate_next <= R_WRITE_OTHER_NOP2;
+			when R_WRITE_OTHER_NOP2 =>
+				rstate_next <= R_WRITE_OTHER_NOP3;
+			when R_WRITE_OTHER_NOP3 =>
+				rstate_next <= R_WRITE_OTHER_NOP4;
+			when R_WRITE_OTHER_NOP4 =>
+				ppData_out <= mcData_in;
+				ppRDV_out <= mcRDV_in;
+				rstate_next <= R_WRITE_OTHER_EXEC;
+
+			-- -------------------------------------------------------------------------------------
+			-- Now execute the foreign write - it'll be handled by someone else so just copy it over
+			-- to the trace FIFO.
+			--
+			when R_WRITE_OTHER_EXEC =>
+				rstate_next <= R_WRITE_OTHER_WAIT;
+				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceValid_out <= traceEnable_in;
+			when R_WRITE_OTHER_WAIT =>
+				if ( mdDSW_sync = "11" ) then
+					rstate_next <= R_IDLE;
 				end if;
 
 			-- -------------------------------------------------------------------------------------
@@ -282,21 +346,26 @@ begin
 					addrReg_next <= mdAddr_sync;
 					mdAS_next <= mdAS_sync;
 					if ( mdAddr_sync(22) = '0' ) then
-						-- MD is reading LOMEM
-						rstate_next <= R_READ_LOMEM_WAIT;
+						-- MD is doing an owned read (i.e in our address ranges)
+						rstate_next <= R_READ_OWNED_WAIT;
 						mcCmd_out <= MC_RD;
 						mcAddr_out <= mdAddr_sync;
 					else
-						-- MD is reading HIMEM
-						rstate_next <= R_READ_HIMEM_WAIT;
+						-- MD is doing a foreign read (i.e not in our address ranges)
+						rstate_next <= R_READ_OTHER_WAIT;
 					end if;
 
 				-- Check for write requests
-				elsif ( mdDSW_sync1 /= "11" ) then
-					-- MD is writing somewhere
-					rstate_next <= R_WRITE_WAIT;
+				elsif ( mdDSW_sync /= "11" ) then
 					addrReg_next <= mdAddr_sync;
 					mdAS_next <= mdAS_sync;
+					if ( mdAddr_sync(22) = '0' ) then
+						-- MD is doing an owned write (i.e in our address ranges)
+						rstate_next <= R_WRITE_OWNED_NOP1;
+					else
+						-- MD is doing a foreign write (i.e not in our address ranges)
+						rstate_next <= R_WRITE_OTHER_NOP1;
+					end if;
 				end if;
 		end case;
 	end process;
