@@ -66,25 +66,25 @@ architecture rtl of mem_arbiter is
 		R_IDLE,   -- wait for mdOE_sync to go low when A22='0', indicating a MD cart read
 
 		-- Reading from 0x000000 - 0x7FFFFF (cartridge SDRAM)
-		R_WAIT_READ_LOW,
-		R_NOP1,
-		R_NOP2,
-		R_NOP3,
-		R_NOP4,
-		R_EXEC_REFRESH,
-		R_WAIT_REFRESH,
-		R_WAIT_MD,
+		R_READ_LOMEM_WAIT,
+		R_READ_LOMEM_NOP1,
+		R_READ_LOMEM_NOP2,
+		R_READ_LOMEM_NOP3,
+		R_READ_LOMEM_NOP4,
+		R_READ_LOMEM_REF_EXEC,
+		R_READ_LOMEM_REF_WAIT,
+		R_READ_LOMEM_END_WAIT,
 
 		-- Reading from 0x800000 - 0xFFFFFF (MD RAM & h/w registers)
-		R_WAIT_READ_HIGH,
+		R_READ_HIMEM_WAIT,
 
 		-- Writing somewhere
-		R_WAIT_WRITE_HIGH
+		R_WRITE_WAIT
 	);
 	type MStateType is (
 		M_IDLE,
-		M_WAIT_READ,
-		M_WAIT_END
+		M_READ_WAIT,
+		M_END_WAIT
 	);
 	
 	-- Registers
@@ -140,7 +140,9 @@ begin
 		end if;
 	end process;
 
-	-- RAM handler state-machine
+	-- #############################################################################################
+	-- ##                           State machine to control the SDRAM                            ##
+	-- #############################################################################################
 	process(
 		rstate, dataReg, addrReg,
 		mdOE_sync, mdDSW_sync1, mdDSW_sync2, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
@@ -170,114 +172,138 @@ begin
 		traceValid_out <= '0';
 
 		case rstate is
+			-- -------------------------------------------------------------------------------------
+			-- Whilst the MD is in reset, the SDRAM does auto-refresh, and the host has complete
+			-- control over it.
+			--
 			when R_RESET =>
-				-- The mem_ctrl inputs are driven by the mem_pipe outputs.
-				mcAutoMode_out <= '1';  -- enable auto-refresh
+				-- Enable auto-refresh
+				mcAutoMode_out <= '1';
+
+				-- Drive mem-ctrl inputs with mem-pipe outputs
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
 
-				-- The mem_pipe inputs are driven by the mem_ctrl outputs.
+				-- Drive mem-pipe inputs with mem-ctrl outputs
 				ppData_out <= mcData_in;
-				ppReady_out <= mcReady_in;
+				ppReady_out <= mcReady_in;  
 				ppRDV_out <= mcRDV_in;
-				
-				-- Proceed when the host releases MD from reset.
+
+				-- Proceed when host releases MD from reset
 				if ( mdReset_in = '0' ) then
 					rstate_next <= R_IDLE;
 				end if;
 
-			-- Wait until the in-progress read completes, then register the result and proceed.
-			when R_WAIT_READ_LOW =>
+			-- -------------------------------------------------------------------------------------
+			-- Wait until the in-progress LOMEM read completes, then register the result, send to
+			-- the trace FIFO and proceed.
+			--
+			when R_READ_LOMEM_WAIT =>
 				if ( mcRDV_in = '1' ) then
-					rstate_next <= R_NOP1;
+					rstate_next <= R_READ_LOMEM_NOP1;
 					dataReg_next <= mcData_in;
 					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mcData_in;
 					traceValid_out <= traceEnable_in;
 				end if;
 
-			when R_NOP1 =>
-				ppReady_out <= mcReady_in;  -- Do a host I/O cycle if one is pending
+			-- Give the host enough time for one I/O cycle, if it wants it.
+			--
+			when R_READ_LOMEM_NOP1 =>
+				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
-				rstate_next <= R_NOP2;
-				
-			when R_NOP2 =>
-				rstate_next <= R_NOP3;
-				
-			when R_NOP3 =>
-				rstate_next <= R_NOP4;
-				
-			when R_NOP4 =>
+				rstate_next <= R_READ_LOMEM_NOP2;
+			when R_READ_LOMEM_NOP2 =>
+				rstate_next <= R_READ_LOMEM_NOP3;
+			when R_READ_LOMEM_NOP3 =>
+				rstate_next <= R_READ_LOMEM_NOP4;
+			when R_READ_LOMEM_NOP4 =>
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
-				rstate_next <= R_EXEC_REFRESH;
+				rstate_next <= R_READ_LOMEM_REF_EXEC;
 				
-			-- Start refresh cycle
-			when R_EXEC_REFRESH =>
-				rstate_next <= R_WAIT_REFRESH;
+			-- Start a refresh cycle, then wait for it to complete.
+			--
+			when R_READ_LOMEM_REF_EXEC =>
+				rstate_next <= R_READ_LOMEM_REF_WAIT;
 				mcCmd_out <= MC_REF;
-				
-			-- Wait for refresh cycle to complete
-			when R_WAIT_REFRESH =>
+			when R_READ_LOMEM_REF_WAIT =>
 				if ( mcReady_in = '1' ) then
 					if ( mdOE_sync = '1' ) then
 						rstate_next <= R_IDLE;
 					else
-						rstate_next <= R_WAIT_MD;
+						rstate_next <= R_READ_LOMEM_END_WAIT;
 					end if;
 				end if;
 
-			when R_WAIT_MD =>
+			-- If /OE is still asserted, wait for it to deassert before going back to R_IDLE.
+			--
+			when R_READ_LOMEM_END_WAIT =>
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 				end if;
 
-			when R_WAIT_READ_HIGH =>
+			-- -------------------------------------------------------------------------------------
+			-- Wait for the in-progress HIMEM read to complete, then send to the trace FIFO and go
+			-- back to R_IDLE.
+			--
+			when R_READ_HIMEM_WAIT =>
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mdData_sync;
 					traceValid_out <= traceEnable_in;
 				end if;
 
-			when R_WAIT_WRITE_HIGH =>
+			-- -------------------------------------------------------------------------------------
+			-- Wait for the in-progress write to complete, then send to the trace FIFO and go back
+			-- to R_IDLE.
+			--
+			when R_WRITE_WAIT =>
 				if ( mdDSW_sync1 = "11" ) then
 					rstate_next <= R_IDLE;
 					traceData_out <= "000000" & mdAS & mdDSW_sync2 & addrReg & mdData_sync;
 					traceValid_out <= traceEnable_in;
 				end if;
 
-			-- R_IDLE & others
+			-- -------------------------------------------------------------------------------------
+			-- R_IDLE & others.
+			--
 			when others =>
-				if ( mdOE_sync = '0' ) then
-					if ( mdAddr_sync(22) = '0' ) then
-						-- MD is reading from cartridge space
-						rstate_next <= R_WAIT_READ_LOW;
-						mcCmd_out <= MC_RD;
-						mcAddr_out <= mdAddr_sync;
-						addrReg_next <= mdAddr_sync;
-						mdAS_next <= mdAS_sync;
-					else
-						-- MD is reading from onboard RAM or hardware
-						rstate_next <= R_WAIT_READ_HIGH;
-						addrReg_next <= mdAddr_sync;
-						mdAS_next <= mdAS_sync;
-					end if;
-				elsif ( mdDSW_sync1 /= "11" ) then
-					-- MD is writing somewhere
-					rstate_next <= R_WAIT_WRITE_HIGH;
-					addrReg_next <= mdAddr_sync;
-					mdAS_next <= mdAS_sync;
-				end if;
+				-- See if the host wants MD back in reset
 				if ( mdReset_in = '1' ) then
 					-- MD back in reset, so give host full control again
 					rstate_next <= R_RESET;
 				end if;
+
+				-- Check for read requests
+				if ( mdOE_sync = '0' ) then
+					addrReg_next <= mdAddr_sync;
+					mdAS_next <= mdAS_sync;
+					if ( mdAddr_sync(22) = '0' ) then
+						-- MD is reading LOMEM
+						rstate_next <= R_READ_LOMEM_WAIT;
+						mcCmd_out <= MC_RD;
+						mcAddr_out <= mdAddr_sync;
+					else
+						-- MD is reading HIMEM
+						rstate_next <= R_READ_HIMEM_WAIT;
+					end if;
+
+				-- Check for write requests
+				elsif ( mdDSW_sync1 /= "11" ) then
+					-- MD is writing somewhere
+					rstate_next <= R_WRITE_WAIT;
+					addrReg_next <= mdAddr_sync;
+					mdAS_next <= mdAS_sync;
+				end if;
 		end case;
 	end process;
 
-	-- MegaDrive bus-handler state-machine
+	-- #############################################################################################
+	-- ##                     State machine to control the MD data-bus buffer                     ##
+	-- #############################################################################################
 	process(
 		mstate, addrReg, dataReg, mdOE_sync, mdAddr_sync(22), mcData_in, mcRDV_in)
 	begin
@@ -286,14 +312,14 @@ begin
 		mdDriveBus_out <= '0';
 		
 		case mstate is
-			when M_WAIT_READ =>
+			when M_READ_WAIT =>
 				mdData_io <= mcData_in;
 				mdDriveBus_out <= '1';
 				if ( mcRDV_in = '1' ) then
-					mstate_next <= M_WAIT_END;
+					mstate_next <= M_END_WAIT;
 				end if;
 
-			when M_WAIT_END =>
+			when M_END_WAIT =>
 				mdData_io <= dataReg;
 				mdDriveBus_out <= '1';
 				if ( mdOE_sync = '1' ) then
@@ -304,7 +330,7 @@ begin
 
 			when M_IDLE =>
 				if ( mdOE_sync = '0' and mdAddr_sync(22) = '0' ) then
-					mstate_next <= M_WAIT_READ;
+					mstate_next <= M_READ_WAIT;
 				end if;
 		end case;
 	end process;
