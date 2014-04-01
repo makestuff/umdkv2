@@ -71,12 +71,11 @@ architecture rtl of mem_arbiter is
 		R_READ_OWNED_NOP2,
 		R_READ_OWNED_NOP3,
 		R_READ_OWNED_NOP4,
-		R_READ_OWNED_REF_EXEC,
-		R_READ_OWNED_REF_WAIT,
-		R_READ_OWNED_END_WAIT,
+		R_READ_OWNED_REFRESH,
+		R_READ_OWNED_FINISH,
 
 		-- Foreign read
-		R_READ_OTHER_WAIT,
+		R_READ_OTHER,
 
 		-- Owned write
 		R_WRITE_OWNED_NOP1,
@@ -84,7 +83,7 @@ architecture rtl of mem_arbiter is
 		R_WRITE_OWNED_NOP3,
 		R_WRITE_OWNED_NOP4,
 		R_WRITE_OWNED_EXEC,
-		R_WRITE_OWNED_WAIT,
+		R_WRITE_OWNED_FINISH,
 
 		-- Foreign write
 		R_WRITE_OTHER_NOP1,
@@ -92,7 +91,7 @@ architecture rtl of mem_arbiter is
 		R_WRITE_OTHER_NOP3,
 		R_WRITE_OTHER_NOP4,
 		R_WRITE_OTHER_EXEC,
-		R_WRITE_OTHER_WAIT
+		R_WRITE_OTHER_FINISH
 	);
 	type MStateType is (
 		M_IDLE,
@@ -232,26 +231,15 @@ begin
 			when R_READ_OWNED_NOP4 =>
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
-				rstate_next <= R_READ_OWNED_REF_EXEC;
+				rstate_next <= R_READ_OWNED_REFRESH;
 				
 			-- Start a refresh cycle, then wait for it to complete.
 			--
-			when R_READ_OWNED_REF_EXEC =>
-				rstate_next <= R_READ_OWNED_REF_WAIT;
+			when R_READ_OWNED_REFRESH =>
+				rstate_next <= R_READ_OWNED_FINISH;
 				mcCmd_out <= MC_REF;
-			when R_READ_OWNED_REF_WAIT =>
-				if ( mcReady_in = '1' ) then
-					if ( mdOE_sync = '1' ) then
-						rstate_next <= R_IDLE;
-					else
-						rstate_next <= R_READ_OWNED_END_WAIT;
-					end if;
-				end if;
-
-			-- If /OE is still asserted, wait for it to deassert before going back to R_IDLE.
-			--
-			when R_READ_OWNED_END_WAIT =>
-				if ( mdOE_sync = '1' ) then
+			when R_READ_OWNED_FINISH =>
+				if ( mcReady_in = '1' and mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 				end if;
 
@@ -259,7 +247,7 @@ begin
 			-- Wait for the in-progress foreign read to complete, then send to the trace FIFO and go
 			-- back to R_IDLE.
 			--
-			when R_READ_OTHER_WAIT =>
+			when R_READ_OTHER =>
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mdData_sync;
@@ -286,15 +274,17 @@ begin
 				ppRDV_out <= mcRDV_in;
 				rstate_next <= R_WRITE_OWNED_EXEC;
 
-			-- -------------------------------------------------------------------------------------
 			-- Now execute the owned write. TODO: actually do the write, dummy.
 			--
 			when R_WRITE_OWNED_EXEC =>
-				rstate_next <= R_WRITE_OWNED_WAIT;
+				rstate_next <= R_WRITE_OWNED_FINISH;
 				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
-			when R_WRITE_OWNED_WAIT =>
-				if ( mdDSW_sync = "11" ) then
+				mcCmd_out <= MC_WR;
+				mcAddr_out <= addrReg;
+				mcData_out <= mdData_sync;
+			when R_WRITE_OWNED_FINISH =>
+				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
 					rstate_next <= R_IDLE;
 				end if;
 
@@ -318,15 +308,14 @@ begin
 				ppRDV_out <= mcRDV_in;
 				rstate_next <= R_WRITE_OTHER_EXEC;
 
-			-- -------------------------------------------------------------------------------------
 			-- Now execute the foreign write - it'll be handled by someone else so just copy it over
 			-- to the trace FIFO.
 			--
 			when R_WRITE_OTHER_EXEC =>
-				rstate_next <= R_WRITE_OTHER_WAIT;
+				rstate_next <= R_WRITE_OTHER_FINISH;
 				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
-			when R_WRITE_OTHER_WAIT =>
+			when R_WRITE_OTHER_FINISH =>
 				if ( mdDSW_sync = "11" ) then
 					rstate_next <= R_IDLE;
 				end if;
@@ -352,7 +341,7 @@ begin
 						mcAddr_out <= mdAddr_sync;
 					else
 						-- MD is doing a foreign read (i.e not in our address ranges)
-						rstate_next <= R_READ_OTHER_WAIT;
+						rstate_next <= R_READ_OTHER;
 					end if;
 
 				-- Check for write requests
