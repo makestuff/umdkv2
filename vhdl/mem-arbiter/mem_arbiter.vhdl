@@ -91,13 +91,22 @@ architecture rtl of mem_arbiter is
 		R_WRITE_OTHER_NOP3,
 		R_WRITE_OTHER_NOP4,
 		R_WRITE_OTHER_EXEC,
-		R_WRITE_OTHER_FINISH
+		R_WRITE_OTHER_FINISH,
+
+		-- Register write
+		R_WRITE_REG_NOP1,
+		R_WRITE_REG_NOP2,
+		R_WRITE_REG_NOP3,
+		R_WRITE_REG_NOP4,
+		R_WRITE_REG_EXEC,
+		R_WRITE_REG_FINISH
 	);
 	type MStateType is (
 		M_IDLE,
 		M_READ_WAIT,
 		M_END_WAIT
 	);
+	type BankType is array (0 to 7) of std_logic_vector(4 downto 0);
 	
 	-- Registers
 	signal rstate       : RStateType := R_RESET;
@@ -110,6 +119,9 @@ architecture rtl of mem_arbiter is
 	signal addrReg_next : std_logic_vector(22 downto 0);
 	signal mdAS         : std_logic;
 	signal mdAS_next    : std_logic;
+	signal memBank      : BankType := (
+		"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111");
+	signal memBank_next : BankType;
 
 	-- Synchronise MegaDrive signals to sysClk
 	signal mdAS_sync    : std_logic := '1';
@@ -134,6 +146,7 @@ begin
 				mdDSW_sync <= "11";
 				mdData_sync <= (others => '0');
 				mdAS <= '1';
+				memBank <= ("00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111");
 			else
 				rstate <= rstate_next;
 				mstate <= mstate_next;
@@ -145,6 +158,7 @@ begin
 				mdDSW_sync <= mdUDSW_in & mdLDSW_in;
 				mdData_sync <= mdData_io;
 				mdAS <= mdAS_next;
+				memBank <= memBank_next;
 			end if;
 		end if;
 	end process;
@@ -153,17 +167,25 @@ begin
 	-- ##                           State machine to control the SDRAM                            ##
 	-- #############################################################################################
 	process(
-		rstate, dataReg, addrReg,
-		mdOE_sync, mdDSW_sync, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
-		mcReady_in, mcData_in, mcRDV_in,
-		ppCmd_in, ppAddr_in, ppData_in,
-		traceEnable_in)
+			rstate, dataReg, addrReg,
+			mdOE_sync, mdDSW_sync, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
+			mcReady_in, mcData_in, mcRDV_in,
+			ppCmd_in, ppAddr_in, ppData_in,
+			memBank,
+			traceEnable_in
+		)
+		impure function transAddr(addr : std_logic_vector(22 downto 0)) return std_logic_vector is
+		begin
+			-- Generate SDRAM physical address using MD address and memBank (SSF2) registers
+			return memBank(to_integer(unsigned(addr(21 downto 18)))) & addr(17 downto 0);
+		end function;
 	begin
 		-- Local register defaults
 		rstate_next <= rstate;
 		dataReg_next <= dataReg;
 		addrReg_next <= addrReg;
 		mdAS_next <= mdAS;
+		memBank_next <= memBank;
 
 		-- Memory controller defaults
 		mcAutoMode_out <= '0';  -- don't auto-refresh by default.
@@ -274,14 +296,14 @@ begin
 				ppRDV_out <= mcRDV_in;
 				rstate_next <= R_WRITE_OWNED_EXEC;
 
-			-- Now execute the owned write. TODO: actually do the write, dummy.
+			-- Now execute the owned write.
 			--
 			when R_WRITE_OWNED_EXEC =>
 				rstate_next <= R_WRITE_OWNED_FINISH;
 				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
 				mcCmd_out <= MC_WR;
-				mcAddr_out <= addrReg;
+				mcAddr_out <= transAddr(addrReg);
 				mcData_out <= mdData_sync;
 			when R_WRITE_OWNED_FINISH =>
 				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
@@ -321,6 +343,38 @@ begin
 				end if;
 
 			-- -------------------------------------------------------------------------------------
+			-- A register write has been requested, but things are not yet stable so give the host
+			-- enough time for one I/O cycle, if it wants it - this will provide enough of a delay
+			-- for the write masks and data to stabilise.
+			--
+			when R_WRITE_REG_NOP1 =>
+				ppReady_out <= mcReady_in;
+				mcCmd_out <= ppCmd_in;
+				mcAddr_out <= ppAddr_in;
+				mcData_out <= ppData_in;
+				rstate_next <= R_WRITE_REG_NOP2;
+			when R_WRITE_REG_NOP2 =>
+				rstate_next <= R_WRITE_REG_NOP3;
+			when R_WRITE_REG_NOP3 =>
+				rstate_next <= R_WRITE_REG_NOP4;
+			when R_WRITE_REG_NOP4 =>
+				ppData_out <= mcData_in;
+				ppRDV_out <= mcRDV_in;
+				rstate_next <= R_WRITE_REG_EXEC;
+
+			-- Now execute the register write.
+			--
+			when R_WRITE_REG_EXEC =>
+				rstate_next <= R_WRITE_REG_FINISH;
+				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceValid_out <= traceEnable_in;
+				memBank_next(to_integer(unsigned(addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
+			when R_WRITE_REG_FINISH =>
+				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
+					rstate_next <= R_IDLE;
+				end if;
+
+			-- -------------------------------------------------------------------------------------
 			-- R_IDLE & others.
 			--
 			when others =>
@@ -330,25 +384,33 @@ begin
 					rstate_next <= R_RESET;
 				end if;
 
-				-- Check for read requests
 				if ( mdOE_sync = '0' ) then
+					-- MD is reading
 					addrReg_next <= mdAddr_sync;
 					mdAS_next <= mdAS_sync;
 					if ( mdAddr_sync(22) = '0' ) then
 						-- MD is doing an owned read (i.e in our address ranges)
 						rstate_next <= R_READ_OWNED_WAIT;
 						mcCmd_out <= MC_RD;
-						mcAddr_out <= mdAddr_sync;
+						mcAddr_out <= transAddr(mdAddr_sync);
 					else
 						-- MD is doing a foreign read (i.e not in our address ranges)
 						rstate_next <= R_READ_OTHER;
 					end if;
-
-				-- Check for write requests
 				elsif ( mdDSW_sync /= "11" ) then
+					-- MD is writing
 					addrReg_next <= mdAddr_sync;
 					mdAS_next <= mdAS_sync;
-					if ( mdAddr_sync(22) = '0' ) then
+					if ( mdAddr_sync(22 downto 3) = x"A130F" ) then
+						-- MD is writing 0xA130Fx range (SSF2 registers)
+						if ( mdAddr_sync(2 downto 0) = "000" ) then
+							-- The 0xA130F0 register is not mapped
+							rstate_next <= R_WRITE_OTHER_NOP1;
+						else
+							-- The 0xA130F2-0xA130FE registers are mapped
+							rstate_next <= R_WRITE_REG_NOP1;
+						end if;
+					elsif ( mdAddr_sync(22) = '0' ) then
 						-- MD is doing an owned write (i.e in our address ranges)
 						rstate_next <= R_WRITE_OWNED_NOP1;
 					else
