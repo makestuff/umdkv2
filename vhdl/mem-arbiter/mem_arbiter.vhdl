@@ -106,7 +106,7 @@ architecture rtl of mem_arbiter is
 		M_READ_WAIT,
 		M_END_WAIT
 	);
-	type BankType is array (0 to 7) of std_logic_vector(4 downto 0);
+	type BankType is array (0 to 15) of std_logic_vector(4 downto 0);
 	
 	-- Registers
 	signal rstate       : RStateType := R_RESET;
@@ -120,7 +120,9 @@ architecture rtl of mem_arbiter is
 	signal mdAS         : std_logic;
 	signal mdAS_next    : std_logic;
 	signal memBank      : BankType := (
-		"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111");
+		"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
+		"01000", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
+	);
 	signal memBank_next : BankType;
 
 	-- Synchronise MegaDrive signals to sysClk
@@ -146,7 +148,10 @@ begin
 				mdDSW_sync <= "11";
 				mdData_sync <= (others => '0');
 				mdAS <= '1';
-				memBank <= ("00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111");
+				memBank <= (
+					"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
+					"01000", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
+				);
 			else
 				rstate <= rstate_next;
 				mstate <= mstate_next;
@@ -174,9 +179,9 @@ begin
 			memBank,
 			traceEnable_in
 		)
+		-- Function to generate SDRAM physical address using MD address and memBank (SSF2) regs
 		impure function transAddr(addr : std_logic_vector(22 downto 0)) return std_logic_vector is
 		begin
-			-- Generate SDRAM physical address using MD address and memBank (SSF2) registers
 			return memBank(to_integer(unsigned(addr(21 downto 18)))) & addr(17 downto 0);
 		end function;
 	begin
@@ -368,7 +373,7 @@ begin
 				rstate_next <= R_WRITE_REG_FINISH;
 				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
-				memBank_next(to_integer(unsigned(addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
+				memBank_next(to_integer(unsigned(mdData_sync(6) & addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
 			when R_WRITE_REG_FINISH =>
 				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
 					rstate_next <= R_IDLE;
