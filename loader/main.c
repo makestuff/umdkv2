@@ -16,6 +16,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <libfpgalink.h>
 #include "args.h"
 
@@ -29,15 +30,17 @@ int main(int argc, const char *argv[]) {
 	const char *error = NULL;
 	uint8 byte = 0x10;
 	uint8 flag;
-	size_t numBytes, numWords, i, numSame;
-	uint8 *fileBuffer = NULL;
-	uint8 *readBuffer = NULL;
-	const char *vp = NULL, *ivp = NULL, *progConfig = NULL, *dataFile = NULL;
+	size_t i;
+	uint8 *writeBuf = NULL;
+	uint8 *readBuf = NULL;
+	const char *vp = "1d50:602b", *ivp = NULL, *progConfig = NULL;
 	const char *const prog = argv[0];
 	uint8 command[8];
-	bool compare = false;
-	bool startRunning = false;
-	const char *execTrace = NULL;
+	const char *execCtrl = NULL, *execTrace = NULL;
+	const char *rdFile = NULL, *wrFile = NULL, *cmpFile = NULL;
+	size_t fileNameLength;
+	char *filePart = NULL;
+	FILE *outFile = NULL;
 
 	printf("UMDKv2 Loader Copyright (C) 2014 Chris McClelland\n\n");
 	argv++;
@@ -52,23 +55,26 @@ int main(int argc, const char *argv[]) {
 			usage(prog);
 			FAIL(0, cleanup);
 			break;
-		case 'c':
-			compare = true;
-			break;
-		case 's':
-		    startRunning = true;
+		case 'i':
+			GET_ARG("i", ivp, 5, cleanup);
 			break;
 		case 'v':
 			GET_ARG("v", vp, 4, cleanup);
 			break;
-		case 'i':
-			GET_ARG("i", ivp, 5, cleanup);
-			break;
 		case 'p':
 			GET_ARG("p", progConfig, 6, cleanup);
 			break;
-		case 'f':
-			GET_ARG("f", dataFile, 7, cleanup);
+		case 'w':
+			GET_ARG("w", wrFile, 7, cleanup);
+			break;
+		case 'r':
+			GET_ARG("r", rdFile, 7, cleanup);
+			break;
+		case 'c':
+			GET_ARG("c", cmpFile, 7, cleanup);
+			break;
+		case 'x':
+			GET_ARG("x", execCtrl, 7, cleanup);
 			break;
 		case 't':
 			GET_ARG("t", execTrace, 8, cleanup);
@@ -80,18 +86,9 @@ int main(int argc, const char *argv[]) {
 		argv++;
 		argc--;
 	}
-	if ( !vp ) {
-		missing(prog, "v <VID:PID>");
-		FAIL(3, cleanup);
-	}
-	if ( compare && startRunning ) {
-		fprintf(stderr, "C'mon dude, think about it: it makes no sense to give -c AND -s!\n");
-		FAIL(4, cleanup);
-	}
 	status = flInitialise(0, &error);
 	CHECK_STATUS(status, 6, cleanup);
 	
-	printf("Checking for presence of FPGALink device %s...\n", vp);
 	status = flIsDeviceAvailable(vp, &flag, &error);
 	CHECK_STATUS(status, 7, cleanup);
 	if ( !flag ) {
@@ -117,99 +114,289 @@ int main(int argc, const char *argv[]) {
 				FAIL(10, cleanup);
 			}
 		} else {
-			fprintf(stderr, "Could not open FPGALink device at %s and no initial VID:PID was supplied\n", vp);
+			fprintf(stderr, "Could not find any %s devices and no initial VID:PID was supplied\n", vp);
 			FAIL(11, cleanup);
 		}
 	}
-	printf("Attempting to open connection to FPGLink device %s...\n", vp);
 	status = flOpen(vp, &handle, &error);
 	CHECK_STATUS(status, 12, cleanup);
-	
+
 	if ( progConfig ) {
 		printf("Executing programming configuration \"%s\" on FPGALink device %s...\n", progConfig, vp);
 		status = flProgram(handle, progConfig, NULL, &error);
 		CHECK_STATUS(status, 13, cleanup);
 	}
-	
-	if ( dataFile ) {
-		printf("Loading %s...\n", dataFile);
-		fileBuffer = flLoadFile(dataFile, &numBytes);
-		if ( !fileBuffer ) {
-			fprintf(stderr, "Unable to load file %s!\n", dataFile);
-			FAIL(14, cleanup);
+
+	status = flSelectConduit(handle, 0x01, &error);
+	CHECK_STATUS(status, 16, cleanup);
+
+	i = 0;
+	if ( rdFile ) { i++; }
+	if ( wrFile ) { i++; }
+	if ( cmpFile ) { i++; }
+	if ( i > 1 ) {
+		fprintf(stderr, "The -r, -w and -c options are mutually exclusive\n");
+		FAIL(2, cleanup);
+	}
+
+	if ( execCtrl ) {
+		if ( execCtrl[1] != '\0' || execCtrl[0] < '0' || execCtrl[0] > '2' ) {
+			fprintf(stderr, "Invalid argument to option -x <0|1|2>\n");
+			FAIL(1, cleanup);
 		}
-		if ( numBytes & 1 ) {
-			fprintf(stderr, "File %s contains an odd number of bytes!\b", dataFile);
-			FAIL(15, cleanup);
-		}
-		
-		status = flSelectConduit(handle, 0x01, &error);
-		CHECK_STATUS(status, 16, cleanup);
-		
-		if ( !compare ) {
+		if ( execCtrl[0] != 1 ) {
 			printf("Putting MD in reset...\n");
 			byte = 0x01;
 			status = flWriteChannel(handle, 0x01, 1, &byte, &error);
 			CHECK_STATUS(status, 17, cleanup);
 		}
-		
+	}
+
+	if ( wrFile ) {
+		size_t address = 0;
+		size_t numBytes, numWords;
+		const char *ptr = wrFile;
+		char ch = *ptr;
+		while ( ch && ch != ':' ) {
+			ch = *++ptr;
+		}
+		if ( ch != ':' ) {
+			fprintf(stderr, "Invalid argument to option -w <file:addr>\n");
+			FAIL(1, cleanup);
+		}
+		fileNameLength = ptr - wrFile;
+		ptr++;
+		address = (size_t)strtoul(ptr, (char**)&ptr, 0);
+		if ( *ptr != '\0' ) {
+			fprintf(stderr, "Invalid argument to option -w <file:addr>\n");
+			FAIL(15, cleanup);
+		}
+		if ( address & 1 ) {
+			fprintf(stderr, "Address cannot be an odd number!\n");
+			FAIL(16, cleanup);
+		}
+
+		filePart = malloc(fileNameLength + 1);
+		if ( !filePart ) {
+			fprintf(stderr, "Memory allocation error!\n");
+			FAIL(14, cleanup);
+		}
+		strncpy(filePart, wrFile, fileNameLength);
+		filePart[fileNameLength] = '\0';
+		writeBuf = flLoadFile(filePart, &numBytes);
+		if ( !writeBuf ) {
+			fprintf(stderr, "Unable to load file %s!\n", filePart);
+			FAIL(14, cleanup);
+		}
+		if ( numBytes & 1 ) {
+			fprintf(stderr, "File %s contains an odd number of bytes!\n", filePart);
+			FAIL(15, cleanup);
+		}
+
 		numWords = numBytes / 2;
-		command[0] = command[1] = command[2] = command[3] = 0x00;
+		address = address / 2;
+
+		command[0] = 0x00; // set mem-pipe pointer
+		command[3] = (uint8)address;
+		address >>= 8;
+		command[2] = (uint8)address;
+		address >>= 8;
+		command[1] = (uint8)address;
+		
+		command[4] = 0x80; // write words to SDRAM
 		command[7] = (uint8)numWords;
 		numWords >>= 8;
 		command[6] = (uint8)numWords;
 		numWords >>= 8;
 		command[5] = (uint8)numWords;
-		if ( compare ) {
-			printf("Comparing ROM...\n");
-			command[4] = 0x40;
-			status = flWriteChannel(handle, 0x00, 8, command, &error);
-			CHECK_STATUS(status, 18, cleanup);
-			readBuffer = malloc(numBytes);
-			if ( !readBuffer ) {
-				fprintf(stderr, "Unable to load file %s!\n", dataFile);
-				FAIL(19, cleanup);
-			}
-			status = flReadChannel(handle, 0x00, numBytes, readBuffer, &error);
-			CHECK_STATUS(status, 20, cleanup);
-			
-			numSame = 0;
-			for ( i = 0; i < numBytes; i++ ) {
-				if ( readBuffer[i] == fileBuffer[i] ) {
-					numSame++;
-				}
-			}
-			printf("Memory is %0.5f%% identical\n", 100.0 * (double)numSame/(double)numBytes);
-			if ( numSame != numBytes ) {
-				FILE *dumpFile = fopen("out.dat", "wb");
-				size_t numWritten;
-				if ( !dumpFile ) {
-					fprintf(stderr, "Dump file cannot be written!\n");
-					FAIL(21, cleanup);
-				}
-				numWritten = fwrite(readBuffer, 1, numBytes, dumpFile);
-				if ( numWritten != numBytes ) {
-					fprintf(stderr, "Wrote only %zu bytes to dump file (expected to write %zu)!\n", numWritten, numBytes);
-					FAIL(22, cleanup);
-				}
-				printf("Diffs found, so I saved the readback data to out.dat\n");
-			}
-			
-		} else {
-			printf("Writing ROM...\n");
-			command[4] = 0x80;
-			status = flWriteChannel(handle, 0x00, 8, command, &error);
-			CHECK_STATUS(status, 23, cleanup);
-			status = flWriteChannel(handle, 0x00, numBytes, fileBuffer, &error);
-			CHECK_STATUS(status, 24, cleanup);
-			
-			if ( !execTrace && startRunning ) {
-				printf("Releasing MD from reset...\n");
-				byte = 0x00;
-				status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
-				CHECK_STATUS(status, 25, cleanup);
+		
+		printf("Writing SDRAM...\n");
+		status = flWriteChannelAsync(handle, 0x00, 8, command, &error);
+		CHECK_STATUS(status, 23, cleanup);
+		status = flWriteChannel(handle, 0x00, numBytes, writeBuf, &error);
+		CHECK_STATUS(status, 24, cleanup);
+	}
+
+	if ( rdFile ) {
+		size_t address;
+		size_t numBytes, numWords, numWritten;
+		const char *ptr = rdFile;
+		char ch = *ptr;
+		while ( ch && ch != ':' ) {
+			ch = *++ptr;
+		}
+		if ( ch != ':' ) {
+			fprintf(stderr, "Invalid argument to option -r <file:addr:len>\n");
+			FAIL(15, cleanup);
+		}
+		fileNameLength = ptr - rdFile;
+		ptr++;
+		address = (size_t)strtoul(ptr, (char**)&ptr, 0);
+		if ( *ptr != ':' ) {
+			fprintf(stderr, "Invalid argument to option -r <file:addr:len>\n");
+			FAIL(15, cleanup);
+		}
+		if ( address & 1 ) {
+			fprintf(stderr, "Address cannot be an odd number!\n");
+			FAIL(16, cleanup);
+		}
+		ptr++;
+		numBytes = (size_t)strtoul(ptr, (char**)&ptr, 0);
+		if ( *ptr != '\0' ) {
+			fprintf(stderr, "Invalid argument to option -r <file:addr:len>\n");
+			FAIL(15, cleanup);
+		}
+		if ( numBytes & 1 ) {
+			fprintf(stderr, "Length cannot be an odd number!\n");
+			FAIL(16, cleanup);
+		}
+
+		filePart = malloc(fileNameLength + 1);
+		if ( !filePart ) {
+			fprintf(stderr, "Memory allocation error!\n");
+			FAIL(14, cleanup);
+		}
+		strncpy(filePart, rdFile, fileNameLength);
+		filePart[fileNameLength] = '\0';
+		readBuf = malloc(numBytes);
+		if ( !readBuf ) {
+			fprintf(stderr, "Memory allocation error!\n");
+			FAIL(15, cleanup);
+		}
+
+		numWords = numBytes / 2;
+		address = address / 2;
+
+		command[0] = 0x00; // set mem-pipe pointer
+		command[3] = (uint8)address;
+		address >>= 8;
+		command[2] = (uint8)address;
+		address >>= 8;
+		command[1] = (uint8)address;
+		
+		command[4] = 0x40; // read words to SDRAM
+		command[7] = (uint8)numWords;
+		numWords >>= 8;
+		command[6] = (uint8)numWords;
+		numWords >>= 8;
+		command[5] = (uint8)numWords;
+
+		outFile = fopen(filePart, "wb");
+		if ( !outFile ) {
+			fprintf(stderr, "%s cannot be opened for writing!\n", filePart);
+			FAIL(19,cleanup);
+		}
+
+		printf("Reading SDRAM...\n");
+		status = flWriteChannelAsync(handle, 0x00, 8, command, &error);
+		CHECK_STATUS(status, 18, cleanup);
+		status = flReadChannel(handle, 0x00, numBytes, readBuf, &error);
+		CHECK_STATUS(status, 20, cleanup);
+		numWritten = fwrite(readBuf, 1, numBytes, outFile);
+		if ( numWritten != numBytes ) {
+			fprintf(stderr, "Wrote only %zu bytes to dump file (expected to write %zu)!\n", numWritten, numBytes);
+			FAIL(22, cleanup);
+		}
+	}
+
+	if ( cmpFile ) {
+		size_t address = 0;
+		size_t numBytes, numWords, numSame, numWritten;
+		const char *ptr = cmpFile;
+		char ch = *ptr;
+		while ( ch && ch != ':' ) {
+			ch = *++ptr;
+		}
+		if ( ch != ':' ) {
+			fprintf(stderr, "Invalid argument to option -c <file:addr>\n");
+			FAIL(1, cleanup);
+		}
+		fileNameLength = ptr - cmpFile;
+		ptr++;
+		address = (size_t)strtoul(ptr, (char**)&ptr, 0);
+		if ( *ptr != '\0' ) {
+			fprintf(stderr, "Invalid argument to option -c <file:addr>\n");
+			FAIL(15, cleanup);
+		}
+		if ( address & 1 ) {
+			fprintf(stderr, "Address cannot be an odd number!\n");
+			FAIL(16, cleanup);
+		}
+
+		filePart = malloc(fileNameLength + 1);
+		if ( !filePart ) {
+			fprintf(stderr, "Memory allocation error!\n");
+			FAIL(14, cleanup);
+		}
+		strncpy(filePart, cmpFile, fileNameLength);
+		filePart[fileNameLength] = '\0';
+		writeBuf = flLoadFile(filePart, &numBytes);
+		if ( !writeBuf ) {
+			fprintf(stderr, "Unable to load file %s!\n", filePart);
+			FAIL(14, cleanup);
+		}
+		if ( numBytes & 1 ) {
+			fprintf(stderr, "File %s contains an odd number of bytes!\n", filePart);
+			FAIL(15, cleanup);
+		}
+
+		readBuf = malloc(numBytes);
+		if ( !readBuf ) {
+			fprintf(stderr, "Memory allocation error!\n");
+			FAIL(15, cleanup);
+		}
+
+		numWords = numBytes / 2;
+		address = address / 2;
+
+		command[0] = 0x00; // set mem-pipe pointer
+		command[3] = (uint8)address;
+		address >>= 8;
+		command[2] = (uint8)address;
+		address >>= 8;
+		command[1] = (uint8)address;
+		
+		command[4] = 0x40; // read words to SDRAM
+		command[7] = (uint8)numWords;
+		numWords >>= 8;
+		command[6] = (uint8)numWords;
+		numWords >>= 8;
+		command[5] = (uint8)numWords;
+
+		printf("Comparing SDRAM contents with file...\n");
+		status = flWriteChannelAsync(handle, 0x00, 8, command, &error);
+		CHECK_STATUS(status, 18, cleanup);
+		status = flReadChannel(handle, 0x00, numBytes, readBuf, &error);
+		CHECK_STATUS(status, 20, cleanup);
+
+		numSame = 0;
+		for ( i = 0; i < numBytes; i++ ) {
+			if ( readBuf[i] == writeBuf[i] ) {
+				numSame++;
 			}
 		}
+		if ( numSame != numBytes ) {
+			printf("Memory is only %0.5f%% identical: writing readback to dump.bin!\n", 100.0 * (double)numSame/(double)numBytes);
+			outFile = fopen("dump.bin", "wb");
+			if ( !outFile ) {
+				fprintf(stderr, "\nDump file dump.bin cannot be opened for writing!\n");
+				FAIL(21, cleanup);
+			}
+			numWritten = fwrite(readBuf, 1, numBytes, outFile);
+			if ( numWritten != numBytes ) {
+				fprintf(stderr, "\nWrote only %zu bytes to dump file (expected to write %zu)!\n", numWritten, numBytes);
+				FAIL(22, cleanup);
+			}
+		} else {
+			printf("Memory is identical!\n");
+		}
+	}
+
+	if ( execCtrl && execCtrl[0] != '0' ) {
+		printf("Releasing MD from reset...\n");
+		byte = 0x00;
+		status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
+		CHECK_STATUS(status, 25, cleanup);
 	}
 
 	if ( execTrace ) {
@@ -278,22 +465,27 @@ cleanup:
 		fprintf(stderr, "%s\n", error);
 		flFreeError(error);
 	}
-	free(readBuffer);
-	flFreeFile(fileBuffer);
+	if ( outFile ) {
+		fclose(outFile);
+	}
+	free(filePart);
+	free(readBuf);
+	flFreeFile(writeBuf);
 	flClose(handle);
 	return retVal;
 }
 
 void usage(const char *prog) {
-	printf("Usage: %s [-crh] [-i <VID:PID>] -v <VID:PID> [-p <progConfig>]\n", prog);
-	printf("          [-f <dataFile>]\n\n");
+	printf("Usage: %s [-crqh] [-i <VID:PID>] -v <VID:PID> [-p <progConfig>]\n", prog);
+	printf("          [-r <file:addr>] [-w <file:addr:len>]\n\n");
 	printf("Load FX2LP firmware, load the FPGA, interact with the FPGA.\n\n");
-	printf("  -i <VID:PID>    initial vendor and product ID of the FPGALink device\n");
-	printf("  -v <VID:PID>    renumerated vendor and product ID of the FPGALink device\n");
-	printf("  -p <progConfig> configuration and programming file\n");
-	printf("  -f <dataFile>   the ROM image to load\n");
-	printf("  -t <traceFile>  save execution trace\n");
-	printf("  -s              start executing the ROM image\n");
-	printf("  -c              compare what's in memory with what's in the file\n");
-	printf("  -h              print this help and exit\n");
+	printf("  -i <VID:PID>       initial vendor and product ID of the FPGALink device\n");
+	printf("  -v <VID:PID>       renumerated vendor and product ID of the FPGALink device\n");
+	printf("  -p <progConfig>    configuration and programming file\n");
+	printf("  -w <file:addr>     write data at the given address\n");
+	printf("  -r <file:addr:len> read data from the given address\n");
+	printf("  -c <file:addr>     compare the file with what's at the given address\n");
+	printf("  -x <0|1|2>         choose 0->reset, 1->execute, 2->reset then execute\n");
+	printf("  -t <traceFile>     save execution trace\n");
+	printf("  -h                 print this help and exit\n");
 }
