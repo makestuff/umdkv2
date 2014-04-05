@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ROOT    := $(realpath ../../../../../..)
-DEPS    := 
+DEPS    := fpgalink error
 TYPE    := exe
 SUBDIRS :=
 
