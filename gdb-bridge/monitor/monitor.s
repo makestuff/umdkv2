@@ -1,8 +1,5 @@
 .text
 
-*.global	_start
-
-*yieldBus	= 0xA13000
 cmdFlag		= 0x400400
 cmdIndex	= cmdFlag + 2
 address		= cmdFlag + 4*1
@@ -28,8 +25,6 @@ srSave		= saveBase + 4*16
 pcSave		= saveBase + 4*17
 ramSave		= saveBase + 4*18
 
-CMD_LOOP	= 0
-
 main:
 	move.l	d0, d0Save		| save all registers in host-accessible memory
 	move.l	d1, d1Save
@@ -53,9 +48,10 @@ main:
 	move.w	#0x0000, srSave
 	move.w	0(sp), srSave+2
 	and.w	#0x7FFF, srSave+2	| clear TRACE bit
-
+	move.w	#1, cmdFlag		| tell host we're ready to accept commands
+	
 commandLoop:
-	cmp.w	#1, cmdFlag		| see if host has left us...
+	cmp.w	#2, cmdFlag		| see if host has left us...
 	bne.s	commandLoop		| ...a command to execute
 	move.w	cmdIndex, d0		| yes...get command index
 	and.w	#0x07, d0		| mask command to stop random jumps off the end of the jump table
@@ -63,10 +59,11 @@ commandLoop:
 lda1:	lea	(jTab-lda1-2)(pc), a0	| load jump table
 	move.l	(a0, d0.w), a0		| load offset of requested command
 lda2:	jsr	0(pc,a0)		| ...and jump to it
-	move.w	#2, cmdFlag		| notify host of command completion
+	move.w	#1, cmdFlag		| notify host of command completion
 	bra.s	commandLoop		| loop back again
 
 quit:
+	move.w	#0, cmdFlag		| tell host we're running
 	move.l	d0Save, d0		| restore registers from (possibly host-modified) memory
 	move.l	d1Save, d1
 	move.l	d2Save, d2

@@ -7,8 +7,17 @@
 extern "C" {
 #endif
 
-	int umdkDirectWrite(
-		struct FLContext *handle, uint32 addr, uint32 len, const uint8 *data, const char **error
+	int umdkDirectWriteData(
+		struct FLContext *handle, uint32 address, uint32 count, const uint8 *data, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkDirectWriteFile(
+		struct FLContext *handle, uint32 address, const char *fileName, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkDirectRead(
+		struct FLContext *handle, uint32 address, uint32 count, uint8 *data,
+		const char **error
 	) WARN_UNUSED_RESULT;
 
 #ifdef __cplusplus
