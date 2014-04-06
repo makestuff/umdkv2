@@ -5,6 +5,15 @@
 #include "range.h"
 #include "mem.h"
 
+static void prepMemCtrlCmd(uint8 cmd, uint32 addr, uint8 *buf) {
+	buf[0] = cmd;
+	buf[3] = (uint8)addr;
+	addr >>= 8;
+	buf[2] = (uint8)addr;
+	addr >>= 8;
+	buf[1] = (uint8)addr;
+}
+
 int umdkDirectWriteFile(
 	struct FLContext *handle, uint32 address, const char *fileName,
 	const char **error)
@@ -47,19 +56,8 @@ int umdkDirectWriteFile(
 	wordCount = byteCount / 2;
 
 	// Prepare the write command
-	command[0] = 0x00; // set mem-pipe pointer
-	command[3] = (uint8)wordAddr;
-	wordAddr >>= 8;
-	command[2] = (uint8)wordAddr;
-	wordAddr >>= 8;
-	command[1] = (uint8)wordAddr;
-	
-	command[4] = 0x80; // write words to SDRAM
-	command[7] = (uint8)wordCount;
-	wordCount >>= 8;
-	command[6] = (uint8)wordCount;
-	wordCount >>= 8;
-	command[5] = (uint8)wordCount;
+	prepMemCtrlCmd(0x00, wordAddr, command);
+	prepMemCtrlCmd(0x80, wordCount, command+4);
 
 	// Do the write
 	status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
@@ -110,19 +108,8 @@ int umdkDirectWriteBytes(
 	wordCount = count / 2;
 
 	// Prepare the write command
-	command[0] = 0x00; // set mem-pipe pointer
-	command[3] = (uint8)wordAddr;
-	wordAddr >>= 8;
-	command[2] = (uint8)wordAddr;
-	wordAddr >>= 8;
-	command[1] = (uint8)wordAddr;
-	
-	command[4] = 0x80; // write words to SDRAM
-	command[7] = (uint8)wordCount;
-	wordCount >>= 8;
-	command[6] = (uint8)wordCount;
-	wordCount >>= 8;
-	command[5] = (uint8)wordCount;
+	prepMemCtrlCmd(0x00, wordAddr, command);
+	prepMemCtrlCmd(0x80, wordCount, command+4);
 
 	// Do the write
 	status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
@@ -165,15 +152,6 @@ int umdkDirectWriteLong(
 	CHECK_STATUS(status, status, cleanup);
 cleanup:
 	return retVal;
-}
-
-static void prepMemCtrlCmd(uint8 cmd, uint32 addr, uint8 *buf) {
-	buf[0] = cmd;
-	buf[3] = (uint8)addr;
-	addr >>= 8;
-	buf[2] = (uint8)addr;
-	addr >>= 8;
-	buf[1] = (uint8)addr;
 }
 
 int umdkDirectReadBytes(
@@ -399,3 +377,5 @@ int umdkRemoteAcquire(
 cleanup:
 	return retVal;
 }
+
+//int umdkIndirectWriteBytes
