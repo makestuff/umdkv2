@@ -194,27 +194,12 @@ TEST(Range_testStartMonitor) {
 			CHECK_EQUAL(0, retVal);
 		} while ( cmdFlag == 0x0000 );
 		
-		// Write old opcode back vbAddr
+		// Write old opcode back at vbAddr
 		retVal = umdkDirectWriteWord(g_handle, vbAddr, oldOp, NULL);
-		
-		// Kick off read command
-		retVal = umdkDirectWriteWord(g_handle, 0x400402, 2, NULL); // cmdIndex (2 = READ)
 		CHECK_EQUAL(0, retVal);
-		retVal = umdkDirectWriteLong(g_handle, 0x400404, 0, NULL); // address
-		CHECK_EQUAL(0, retVal);
-		retVal = umdkDirectWriteLong(g_handle, 0x400408, exampleLength, NULL); // length
-		CHECK_EQUAL(0, retVal);
-		retVal = umdkDirectWriteWord(g_handle, 0x400400, 2, NULL); // cmdFlag (2 = EXECUTE)
-		CHECK_EQUAL(0, retVal);
-		
-		// Wait for read execution to complete
-		do {
-			retVal = umdkDirectReadWord(g_handle, 0x400400, &cmdFlag, NULL);
-			CHECK_EQUAL(0, retVal);
-		} while ( cmdFlag == 0x0002 );
-		
-		// Fetch result & verify
-		retVal = umdkDirectReadBytes(g_handle, 0x400454, (uint32)exampleLength, buf, NULL);
+
+		// Execute remote read of the example ROM, and verify
+		retVal = umdkExecuteCommand(g_handle, 2, 0, exampleLength, NULL, buf, NULL);
 		CHECK_EQUAL(0, retVal);
 		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
 		flFreeFile(exampleData);

@@ -43,6 +43,13 @@ extern "C" {
 		struct FLContext *handle, uint32 address, uint32 *pValue, const char **error
 	) WARN_UNUSED_RESULT;
 
+	// ---------------------------------------------------------------------------------------------
+	// Issuing commands
+	//
+	int umdkExecuteCommand(
+		struct FLContext *handle, uint16 command, uint32 address, uint32 length,
+		const uint8 *sendData, uint8 *recvData, const char **error
+	) WARN_UNUSED_RESULT;
 
 #ifdef __cplusplus
 }

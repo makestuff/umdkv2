@@ -263,3 +263,44 @@ int umdkDirectReadLong(
 cleanup:
 	return retVal;
 }
+
+int umdkExecuteCommand(
+	struct FLContext *handle, uint16 command, uint32 address, uint32 length,
+	const uint8 *sendData, uint8 *recvData, const char **error)
+{
+	int retVal = 0;
+	int status;
+	uint16 cmdFlag;
+
+	// Send the request data, if necessary
+	if ( sendData ) {
+		status = umdkDirectWriteBytes(handle, 0x400454, length, sendData, error);
+		CHECK_STATUS(status, status, cleanup);
+	}
+
+	// Setup the parameter block
+	status = umdkDirectWriteWord(handle, 0x400402, command, error);
+	CHECK_STATUS(status, status, cleanup);
+	status = umdkDirectWriteLong(handle, 0x400404, address, error);
+	CHECK_STATUS(status, status, cleanup);
+	status = umdkDirectWriteLong(handle, 0x400408, length, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Start the command executing
+	status = umdkDirectWriteWord(handle, 0x400400, 0x0002, error); // cmdFlag (2 = EXECUTE)
+	CHECK_STATUS(status, status, cleanup);
+	
+	// Wait for execution to complete
+	do {
+		status = umdkDirectReadWord(handle, 0x400400, &cmdFlag, NULL);
+		CHECK_STATUS(status, status, cleanup);
+	} while ( cmdFlag == 0x0002 );
+
+	// Get the response data, if necessary
+	if ( recvData ) {
+		status = umdkDirectReadBytes(handle, 0x400454, length, recvData, error);
+		CHECK_STATUS(status, status, cleanup);
+	}
+cleanup:
+	return retVal;
+}
