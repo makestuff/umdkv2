@@ -94,17 +94,21 @@ doNothing:
 read:
 	move.l	address, a0
 	lea	ramSave, a1
-copy:	move.l	length, d0
+	move.l	length, d0
 	asr	#1, d0
 	subq	#1, d0
-rdCopy:	move.w	(a0)+, (a1)+
-	dbra	d0, rdCopy
+rdLoop:	move.w	(a0)+, (a1)+
+	dbra	d0, rdLoop
 	rts
 
 write:
 	move.l	address, a1
 	lea	ramSave, a0
-	move.w	(a0)+, (a1)+
+	move.l	length, d0
+	asr	#1, d0
+	subq	#1, d0
+wrLoop:	move.w	(a0)+, (a1)+
+	dbra	d0, wrLoop
 	rts
 
 jTab:

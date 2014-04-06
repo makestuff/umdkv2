@@ -136,7 +136,7 @@ TEST(Range_testDirectReadNonAligned) {
 	CHECK_ARRAY_EQUAL(ex3, buf, 8);
 }
 
-TEST(Range_testDirectReadBytesback) {
+TEST(Range_testDirectReadbackBytes) {
 	const uint8 bytes[] = {0xDE, 0xAD, 0xF0, 0x0D};
 	uint8 readback[4];
 	int retVal;
@@ -230,4 +230,25 @@ TEST(Range_testStartMonitor) {
 		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
 		flFreeFile(exampleData);
 	}
+}
+
+TEST(Range_testIndirectWrite) {
+	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D};
+	const uint8 overwrite[] = {0x12, 0x34, 0x56, 0x78};
+	const uint8 expected[] = {0xCA, 0xFE, 0x12, 0x34, 0x56, 0x78, 0xF0, 0x0D};
+	uint8 buf[8];
+	int retVal;
+
+	// Direct-write eight bytes to page 0 (setup)
+	retVal = umdkDirectWriteBytes(g_handle, 0x07FFF8, 8, bytes, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Overwrite four bytes using indirect write
+	retVal = umdkIndirectWriteBytes(g_handle, 0x07FFFA, 4, overwrite, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Read six bytes from an even address
+	retVal = umdkDirectReadBytes(g_handle, 0x07FFF8, 8, buf, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(expected, buf, 8);
 }

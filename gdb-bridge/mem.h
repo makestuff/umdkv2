@@ -102,6 +102,14 @@ extern "C" {
 		const uint8 *sendData, uint8 *recvData, const char **error
 	) WARN_UNUSED_RESULT;
 
+	// ---------------------------------------------------------------------------------------------
+	// Indirect write operations
+	//
+	int umdkIndirectWriteBytes(
+		struct FLContext *handle, uint32 address, uint32 count, const uint8 *data,
+		const char **error
+	) WARN_UNUSED_RESULT;
+
 #ifdef __cplusplus
 }
 #endif

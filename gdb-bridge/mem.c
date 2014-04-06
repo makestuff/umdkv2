@@ -28,7 +28,6 @@ int umdkDirectWriteFile(
 	CHECK_STATUS(!fileData, 1, cleanup, "umdkDirectWriteFile(): Cannot read from %s!", fileName);
 
 	// Verify the write is in a legal range
-	//
 	if ( isInside(MONITOR, 0x80000, address, byteCount) ) {
 		// Write is to the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
 		// is fixed to the top 512KiB of SDRAM, so we need to transpose the MD virtual address to
@@ -47,7 +46,6 @@ int umdkDirectWriteFile(
 	}
 
 	// Next verify that the write is to an even address, and has even length
-	//
 	CHECK_STATUS(address&1, 2, cleanup, "umdkDirectWriteFile(): Address must be even!");
 	CHECK_STATUS(byteCount&1, 3, cleanup, "umdkDirectWriteFile(): File must have even length!");
 
@@ -93,13 +91,12 @@ int umdkDirectWriteBytes(
 		// anywhere else is an error.
 		CHECK_STATUS(
 			true, 1, cleanup,
-			"umdkDirectWriteData(): Illegal direct-write to 0x%06X-0x%06X range!",
+			"umdkDirectWriteBytes(): Illegal direct-write to 0x%06X-0x%06X range!",
 			address, address+count-1
 		);
 	}
 
-	// Next verify that the write is to an even address, and has even countgth
-	//
+	// Next verify that the write is to an even address, and has even length
 	CHECK_STATUS(address&1, 2, cleanup, "umdkDirectWriteBytes(): Address must be even!");
 	CHECK_STATUS(count&1, 3, cleanup, "umdkDirectWriteBytes(): Count must be even!");
 
@@ -179,7 +176,7 @@ int umdkDirectReadBytes(
 		// anywhere else is an error.
 		CHECK_STATUS(
 			true, 1, cleanup,
-			"umdkDirectRead(): Illegal direct-read from 0x%06X-0x%06X range!",
+			"umdkDirectReadBytes(): Illegal direct-read from 0x%06X-0x%06X range!",
 			address, address+count-1
 		);
 	}
@@ -378,4 +375,20 @@ cleanup:
 	return retVal;
 }
 
-//int umdkIndirectWriteBytes
+int umdkIndirectWriteBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
+	const char **error)
+{
+	int retVal = 0;
+	int status;
+
+	// Verify that the write is to an even address, and has even length
+	CHECK_STATUS(address&1, 2, cleanup, "umdkIndirectWriteBytes(): Address must be even!");
+	CHECK_STATUS(count&1, 3, cleanup, "umdkIndirectWriteBytes(): Count must be even!");
+
+	// Execute the write
+	status = umdkExecuteCommand(handle, CMD_WRITE, address, count, data, NULL, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
