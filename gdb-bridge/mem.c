@@ -392,3 +392,46 @@ int umdkIndirectWriteBytes(
 cleanup:
 	return retVal;
 }
+
+int umdkIndirectReadBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
+	const char **error)
+{
+	int retVal = 0;
+	int status;
+	uint32 wordCount;
+	uint8 *tmpBuf = NULL;
+
+	// Reads from odd addresses or for odd lengths need to be done via a temporary buffer
+	if ( address & 1 ) {
+		// Odd address
+		tmpBuf = (uint8*)malloc(count);
+		CHECK_STATUS(!tmpBuf, 2, cleanup, "umdkIndirectReadBytes(): Allocation error!");
+		wordCount = 1 + count / 2;
+
+		// Execute the read
+		status = umdkExecuteCommand(handle, CMD_READ, address-1, 2*wordCount, NULL, tmpBuf, error);
+		CHECK_STATUS(status, status, cleanup);
+		memcpy(data, tmpBuf+1, count);
+	} else {
+		// Even address
+		if ( count & 1 ) {
+			// Even address, odd count
+			tmpBuf = (uint8*)malloc(count);
+			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkDirectReadBytes(): Allocation error!");
+			wordCount = 1 + count / 2;
+
+			// Execute the read
+			status = umdkExecuteCommand(handle, CMD_READ, address, 2*wordCount, NULL, tmpBuf, error);
+			CHECK_STATUS(status, status, cleanup);
+			memcpy(data, tmpBuf, count);
+		} else {
+			// Even address, even count
+			status = umdkExecuteCommand(handle, CMD_READ, address, count, NULL, data, error);
+			CHECK_STATUS(status, status, cleanup);
+		}
+	}
+cleanup:
+	free(tmpBuf);
+	return retVal;
+}

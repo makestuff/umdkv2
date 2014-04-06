@@ -252,3 +252,41 @@ TEST(Range_testIndirectWrite) {
 	CHECK_EQUAL(0, retVal);
 	CHECK_ARRAY_EQUAL(expected, buf, 8);
 }
+
+TEST(Range_testIndirectReadNonAligned) {
+	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D};
+	const uint8 ex0[]   = {0xCC, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D, 0xCC}; // even addr, even count
+	const uint8 ex1[]   = {0xCC, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0xCC, 0xCC}; // even addr, odd count
+	const uint8 ex2[]   = {0xCC, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0xCC}; // odd addr,  even count
+	const uint8 ex3[]   = {0xCC, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xCC, 0xCC}; // odd addr,  odd count
+	uint8 buf[8];
+	int retVal;
+
+	// Write eight bytes to page 0 (setup)
+	retVal = umdkDirectWriteBytes(g_handle, 0x07FFF8, 8, bytes, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Read six bytes from an even address
+	memset(buf, 0xCC, 8);
+	retVal = umdkIndirectReadBytes(g_handle, 0x07FFFA, 6, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex0, buf, 8);
+
+	// Read five bytes from an even address
+	memset(buf, 0xCC, 8);
+	retVal = umdkIndirectReadBytes(g_handle, 0x07FFFA, 5, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex1, buf, 8);
+
+	// Read six bytes from an odd address
+	memset(buf, 0xCC, 8);
+	retVal = umdkIndirectReadBytes(g_handle, 0x07FFF9, 6, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex2, buf, 8);
+
+	// Read five bytes from an odd address
+	memset(buf, 0xCC, 8);
+	retVal = umdkIndirectReadBytes(g_handle, 0x07FFF9, 5, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex3, buf, 8);
+}

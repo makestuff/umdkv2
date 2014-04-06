@@ -110,6 +110,14 @@ extern "C" {
 		const char **error
 	) WARN_UNUSED_RESULT;
 
+	// ---------------------------------------------------------------------------------------------
+	// Indirect read operations
+	//
+	int umdkIndirectReadBytes(
+		struct FLContext *handle, uint32 address, uint32 count, uint8 *data,
+		const char **error
+	) WARN_UNUSED_RESULT;
+
 #ifdef __cplusplus
 }
 #endif
