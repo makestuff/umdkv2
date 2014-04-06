@@ -85,3 +85,13 @@ The ROM load/save and reset-control functionality may be used from flcli too:
   flcli -v 1d50:602b:0002 -a 'w1 01'
 
 Note that the initial memory-controller command specifies a data-length in 16-bit words, not bytes.
+
+You can build and test the GDB bridge as follows. Note that this assumes you've built the VHDL and
+installed, and that you've installed NASM with sudo apt-get install nasm, and that your computer is
+capable of building x86 code (Starscream uses x86 assembler, so you can only run it on x86
+machines):
+
+make -C m68k/example
+cd gdb-bridge
+../scripts/build-star.sh
+make MACHINE=x86
