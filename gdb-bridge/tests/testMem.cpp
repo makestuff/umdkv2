@@ -24,6 +24,17 @@ extern struct FLContext *g_handle;
 
 using namespace std;
 
+static void printRegs(const struct Registers *regs) {
+	printf("D: 0        1        2        3         4        5        6        7\n");
+	printf(
+		"D: %08X %08X %08X %08X  %08X %08X %08X %08X\n",
+		regs->d0, regs->d1, regs->d2, regs->d3, regs->d4, regs->d5, regs->d6, regs->d7);
+	printf(
+		"A: %08X %08X %08X %08X  %08X %08X %08X %08X\n",
+		regs->a0, regs->a1, regs->a2, regs->a3, regs->a4, regs->a5, regs->a6, regs->a7);
+	printf("SR=%08X  PC=%08X\n", regs->sr, regs->pc);
+}
+
 TEST(Range_testDirectWriteBytesValidations) {
 	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE};
 	int retVal;
@@ -159,7 +170,6 @@ TEST(Range_testDirectReadbackBytes) {
 	// Read them back
 	retVal = umdkDirectReadBytes(g_handle, CMD_FLAG, 4, readback, NULL);
 	CHECK_EQUAL(0, retVal);
-	//printf("Got: 0x%02X%02X%02X%02X\n", readback[0], readback[1], readback[2], readback[3]);
 
 	// Compare the response
 	CHECK_ARRAY_EQUAL(bytes, readback, 4);
@@ -212,14 +222,8 @@ TEST(Range_testStartMonitor) {
 		retVal = umdkRemoteAcquire(g_handle, &regs, NULL);
 		CHECK_EQUAL(0, retVal);
 
-		printf("D: 0        1        2        3         4        5        6        7\n");
-		printf(
-			"D: %08X %08X %08X %08X  %08X %08X %08X %08X\n",
-			regs.d0, regs.d1, regs.d2, regs.d3, regs.d4, regs.d5, regs.d6, regs.d7);
-		printf(
-			"A: %08X %08X %08X %08X  %08X %08X %08X %08X\n",
-			regs.a0, regs.a1, regs.a2, regs.a3, regs.a4, regs.a5, regs.a6, regs.a7);
-		printf("SR=%08X  PC=%08X\n", regs.sr, regs.pc);
+		// Print registers
+		printRegs(&regs);
 
 		// Verify we're at the vblank address
 		CHECK_EQUAL(regs.pc, vbAddr);
@@ -289,4 +293,41 @@ TEST(Range_testIndirectReadNonAligned) {
 	retVal = umdkIndirectReadBytes(g_handle, 0x07FFF9, 5, buf+1, NULL);
 	CHECK_EQUAL(0, retVal);
 	CHECK_ARRAY_EQUAL(ex3, buf, 8);
+}
+
+TEST(Range_testStep) {
+	int retVal;
+	struct Registers regs;
+	uint32 oldPC;
+
+	// Load vblank address (should be current PC)
+	retVal = umdkDirectReadLong(g_handle, VB_VEC, &oldPC, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Step one instruction
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK(regs.pc != oldPC);
+	
+	// Step one instruction
+	oldPC = regs.pc;
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK(regs.pc != oldPC);
+	
+	// Step one instruction
+	oldPC = regs.pc;
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK(regs.pc != oldPC);
+	
+	// Step one instruction
+	oldPC = regs.pc;
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK(regs.pc != oldPC);
 }

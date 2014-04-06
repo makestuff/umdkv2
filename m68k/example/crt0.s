@@ -40,7 +40,7 @@ vectors:
 	dc.l	interrupt	/* CHK exception */
 	dc.l	interrupt	/* TRAPV exception */
 	dc.l	interrupt	/* Privilage violation */
-	dc.l	interrupt	/* TRACE exception */
+	dc.l	monitor		/* TRACE exception */
 	dc.l	interrupt	/* Line-A emulator */
 	dc.l	interrupt	/* Line-F emulator */
 	dc.l	interrupt	/* Reserved (NOT USED) */

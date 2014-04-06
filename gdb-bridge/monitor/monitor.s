@@ -58,7 +58,7 @@ commandLoop:
 	asl.w	#2, d0			| multiply by four: the offset is in longwords
 lda1:	lea	(jTab-lda1-2)(pc), a0	| load jump table
 	move.l	(a0, d0.w), a0		| load offset of requested command
-lda2:	jsr	0(pc,a0)		| ...and jump to it
+lda2:	jsr	0(pc, a0)		| ...and jump to it
 	move.w	#1, cmdFlag		| notify host of command completion
 	bra.s	commandLoop		| loop back again
 

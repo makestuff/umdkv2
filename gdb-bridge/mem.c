@@ -435,3 +435,29 @@ cleanup:
 	free(tmpBuf);
 	return retVal;
 }
+
+int umdkStep(
+	struct FLContext *handle, struct Registers *regs, const char **error)
+{
+	int retVal = 0;
+	int status;
+	union RegUnion {
+		struct Registers reg;
+		uint32 longs[18];
+		uint8 bytes[18*4];
+	} *const u = (union RegUnion *)regs;
+	int i;
+
+	// Execute step
+	status = umdkExecuteCommand(handle, CMD_STEP, 0, 0, NULL, NULL, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Read saved registers
+	status = umdkDirectReadBytes(handle, CMD_REGS, 18*4, u->bytes, error);
+	CHECK_STATUS(status, status, cleanup);
+	for ( i = 0; i < 18; i++ ) {
+		u->longs[i] = bigEndian32(u->longs[i]);
+	}
+cleanup:
+	return retVal;
+}

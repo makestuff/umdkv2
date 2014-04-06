@@ -118,6 +118,14 @@ extern "C" {
 		const char **error
 	) WARN_UNUSED_RESULT;
 
+	// ---------------------------------------------------------------------------------------------
+	// Control flow operations
+	//
+	int umdkStep(
+		struct FLContext *handle, struct Registers *regs, const char **error
+	) WARN_UNUSED_RESULT;
+
+
 #ifdef __cplusplus
 }
 #endif
