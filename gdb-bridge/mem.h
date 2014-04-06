@@ -31,6 +31,29 @@ extern "C" {
 		uint32 pc;
 	};
 
+	typedef enum {
+		CF_RUNNING,
+		CF_READY,
+		CF_CMD
+	} CmdFlag;
+
+	typedef enum {
+		CMD_STEP,
+		CMD_CONT,
+		CMD_READ,
+		CMD_WRITE
+	} Command;
+
+	const uint16 ILLEGAL = 0x4AFC;
+	const uint32 VB_VEC = 0x000078;
+	const uint32 MONITOR = 0x400000;
+	const uint32 CMD_FLAG = 0x400400;
+	const uint32 CMD_INDEX = 0x400402;
+	const uint32 CMD_ADDR = 0x400404;
+	const uint32 CMD_LEN = 0x400408;
+	const uint32 CMD_REGS = 0x40040C;
+	const uint32 CMD_MEM = 0x400454;
+
 	// ---------------------------------------------------------------------------------------------
 	// Direct write operations
 	//
@@ -75,7 +98,7 @@ extern "C" {
 	) WARN_UNUSED_RESULT;
 
 	int umdkExecuteCommand(
-		struct FLContext *handle, uint16 command, uint32 address, uint32 length,
+		struct FLContext *handle, Command command, uint32 address, uint32 length,
 		const uint8 *sendData, uint8 *recvData, const char **error
 	) WARN_UNUSED_RESULT;
 

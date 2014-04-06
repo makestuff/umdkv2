@@ -40,19 +40,19 @@ TEST(Range_testDirectWriteBytesValidations) {
 	CHECK_EQUAL(1, retVal);
 
 	// Write four bytes that span bottom of page 8 (should fail)
-	retVal = umdkDirectWriteBytes(g_handle, 0x3FFFFE, 4, bytes, NULL);
+	retVal = umdkDirectWriteBytes(g_handle, MONITOR-2, 4, bytes, NULL);
 	CHECK_EQUAL(1, retVal);
 
 	// Write two bytes to bottom of page 8 (should work)
-	retVal = umdkDirectWriteBytes(g_handle, 0x400000, 2, bytes, NULL);
+	retVal = umdkDirectWriteBytes(g_handle, MONITOR, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Write two bytes to top of page 8 (should work)
-	retVal = umdkDirectWriteBytes(g_handle, 0x47FFFE, 2, bytes, NULL);
+	retVal = umdkDirectWriteBytes(g_handle, MONITOR+512*1024-2, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Write four bytes that span top of page 8 (should fail)
-	retVal = umdkDirectWriteBytes(g_handle, 0x47FFFE, 4, bytes, NULL);
+	retVal = umdkDirectWriteBytes(g_handle, MONITOR+512*1024-2, 4, bytes, NULL);
 	CHECK_EQUAL(1, retVal);
 
 	// Write two bytes to an odd address (should fail)
@@ -81,19 +81,19 @@ TEST(Range_testDirectReadBytesValidations) {
 	CHECK_EQUAL(1, retVal);
 
 	// Read four bytes that span bottom of page 8 (should fail)
-	retVal = umdkDirectReadBytes(g_handle, 0x3FFFFE, 4, bytes, NULL);
+	retVal = umdkDirectReadBytes(g_handle, MONITOR-2, 4, bytes, NULL);
 	CHECK_EQUAL(1, retVal);
 
 	// Read two bytes to bottom of page 8 (should work)
-	retVal = umdkDirectReadBytes(g_handle, 0x400000, 2, bytes, NULL);
+	retVal = umdkDirectReadBytes(g_handle, MONITOR, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Read two bytes to top of page 8 (should work)
-	retVal = umdkDirectReadBytes(g_handle, 0x47FFFE, 2, bytes, NULL);
+	retVal = umdkDirectReadBytes(g_handle, MONITOR+512*1024-2, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Read four bytes that span top of page 8 (should fail)
-	retVal = umdkDirectReadBytes(g_handle, 0x47FFFE, 4, bytes, NULL);
+	retVal = umdkDirectReadBytes(g_handle, MONITOR+512*1024-2, 4, bytes, NULL);
 	CHECK_EQUAL(1, retVal);
 
 	// Read two bytes to an odd address (should fail)
@@ -122,11 +122,11 @@ TEST(Range_testDirectReadBytesback) {
 	CHECK_ARRAY_EQUAL(bytes, readback, 4);
 
 	// Write four bytes to bottom of page 0 (should work)
-	retVal = umdkDirectWriteBytes(g_handle, 0x400400, 4, bytes, NULL);
+	retVal = umdkDirectWriteBytes(g_handle, CMD_FLAG, 4, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Read them back
-	retVal = umdkDirectReadBytes(g_handle, 0x400400, 4, readback, NULL);
+	retVal = umdkDirectReadBytes(g_handle, CMD_FLAG, 4, readback, NULL);
 	CHECK_EQUAL(0, retVal);
 	//printf("Got: 0x%02X%02X%02X%02X\n", readback[0], readback[1], readback[2], readback[3]);
 
@@ -156,7 +156,7 @@ TEST(Range_testStartMonitor) {
 	CHECK_EQUAL(0, retVal);
 
 	// Load vblank address
-	retVal = umdkDirectReadLong(g_handle, 0x78, &vbAddr, NULL);
+	retVal = umdkDirectReadLong(g_handle, VB_VEC, &vbAddr, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Load separately for comparison
@@ -165,11 +165,11 @@ TEST(Range_testStartMonitor) {
 
 	if ( exampleData ) {
 		// Load the monitor image
-		retVal = umdkDirectWriteBytes(g_handle, 0x400000, monitorCodeSize, monitorCodeData, NULL);
+		retVal = umdkDirectWriteBytes(g_handle, MONITOR, monitorCodeSize, monitorCodeData, NULL);
 		CHECK_EQUAL(0, retVal);
 		
 		// Clear cmdFlag
-		retVal = umdkDirectWriteWord(g_handle, 0x400400, 0, NULL);
+		retVal = umdkDirectWriteWord(g_handle, CMD_FLAG, 0, NULL);
 		CHECK_EQUAL(0, retVal);
 		
 		// Release MD from RESET
@@ -194,7 +194,7 @@ TEST(Range_testStartMonitor) {
 		CHECK_EQUAL(regs.pc, vbAddr);
 
 		// Execute remote read of the example ROM, and verify
-		retVal = umdkExecuteCommand(g_handle, 2, 0, exampleLength, NULL, buf, NULL);
+		retVal = umdkExecuteCommand(g_handle, CMD_READ, 0x000000, exampleLength, NULL, buf, NULL);
 		CHECK_EQUAL(0, retVal);
 		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
 		flFreeFile(exampleData);

@@ -18,7 +18,7 @@ int umdkDirectWriteFile(
 
 	// Verify the write is in a legal range
 	//
-	if ( isInside(0x400000, 0x80000, address, byteCount) ) {
+	if ( isInside(MONITOR, 0x80000, address, byteCount) ) {
 		// Write is to the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
 		// is fixed to the top 512KiB of SDRAM, so we need to transpose the MD virtual address to
 		// get the correct SDRAM physical address.
@@ -81,7 +81,7 @@ int umdkDirectWriteBytes(
 
 	// First verify the write is in a legal range
 	//
-	if ( isInside(0x400000, 0x80000, address, count) ) {
+	if ( isInside(MONITOR, 0x80000, address, count) ) {
 		// Write is to the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
 		// is fixed to the top 512KiB of SDRAM, so we need to transpose the MD virtual address to
 		// get the correct SDRAM physical address.
@@ -177,7 +177,7 @@ int umdkDirectReadBytes(
 
 	// First verify the write is in a legal range
 	//
-	if ( isInside(0x400000, 0x80000, address, count) ) {
+	if ( isInside(MONITOR, 0x80000, address, count) ) {
 		// Write is to the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
 		// is fixed to the top 512KiB of SDRAM, so we need to transpose the MD virtual address to
 		// get the correct SDRAM physical address.
@@ -266,7 +266,7 @@ cleanup:
 }
 
 int umdkExecuteCommand(
-	struct FLContext *handle, uint16 command, uint32 address, uint32 length,
+	struct FLContext *handle, Command command, uint32 address, uint32 length,
 	const uint8 *sendData, uint8 *recvData, const char **error)
 {
 	int retVal = 0;
@@ -275,31 +275,31 @@ int umdkExecuteCommand(
 
 	// Send the request data, if necessary
 	if ( sendData ) {
-		status = umdkDirectWriteBytes(handle, 0x400454, length, sendData, error);
+		status = umdkDirectWriteBytes(handle, CMD_MEM, length, sendData, error);
 		CHECK_STATUS(status, status, cleanup);
 	}
 
 	// Setup the parameter block
-	status = umdkDirectWriteWord(handle, 0x400402, command, error);
+	status = umdkDirectWriteWord(handle, CMD_INDEX, command, error);
 	CHECK_STATUS(status, status, cleanup);
-	status = umdkDirectWriteLong(handle, 0x400404, address, error);
+	status = umdkDirectWriteLong(handle, CMD_ADDR, address, error);
 	CHECK_STATUS(status, status, cleanup);
-	status = umdkDirectWriteLong(handle, 0x400408, length, error);
+	status = umdkDirectWriteLong(handle, CMD_LEN, length, error);
 	CHECK_STATUS(status, status, cleanup);
 
 	// Start the command executing
-	status = umdkDirectWriteWord(handle, 0x400400, 0x0002, error); // cmdFlag (2 = EXECUTE)
+	status = umdkDirectWriteWord(handle, CMD_FLAG, CF_CMD, error);
 	CHECK_STATUS(status, status, cleanup);
 	
 	// Wait for execution to complete
 	do {
-		status = umdkDirectReadWord(handle, 0x400400, &cmdFlag, NULL);
+		status = umdkDirectReadWord(handle, CMD_FLAG, &cmdFlag, NULL);
 		CHECK_STATUS(status, status, cleanup);
-	} while ( cmdFlag == 0x0002 );
+	} while ( cmdFlag == CF_CMD );
 
 	// Get the response data, if necessary
 	if ( recvData ) {
-		status = umdkDirectReadBytes(handle, 0x400454, length, recvData, error);
+		status = umdkDirectReadBytes(handle, CMD_MEM, length, recvData, error);
 		CHECK_STATUS(status, status, cleanup);
 	}
 cleanup:
@@ -321,13 +321,13 @@ int umdkRemoteAcquire(
 	int i;
 
 	// See if the monitor is already running
-	status = umdkDirectReadWord(handle, 0x400400, &cmdFlag, error);
+	status = umdkDirectReadWord(handle, CMD_FLAG, &cmdFlag, error);
 	CHECK_STATUS(status, status, cleanup);
 
 	// If monitor is already running, we've got nothing to do. Otherwise...
-	if ( cmdFlag != 0x0001 ) {
+	if ( cmdFlag != CF_READY ) {
 		// Read address of VDP vertical interrupt vector
-		status = umdkDirectReadLong(handle, 0x78, &vbAddr, error);
+		status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
 		CHECK_STATUS(status, status, cleanup);
 		
 		// Read opcode at vbAddr
@@ -335,14 +335,14 @@ int umdkRemoteAcquire(
 		CHECK_STATUS(status, status, cleanup);
 		
 		// Replace opcode at vbAddr with illegal instruction, causing MD to enter monitor
-		status = umdkDirectWriteWord(handle, vbAddr, 0x4AFC, error);
+		status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, error);
 		CHECK_STATUS(status, status, cleanup);
 		
 		// Wait for monitor to start
 		do {
-			status = umdkDirectReadWord(handle, 0x400400, &cmdFlag, error);
+			status = umdkDirectReadWord(handle, CMD_FLAG, &cmdFlag, error);
 			CHECK_STATUS(status, status, cleanup);
-		} while ( cmdFlag != 0x0001 );
+		} while ( cmdFlag != CF_READY );
 		
 		// Write old opcode back at vbAddr
 		status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
@@ -350,7 +350,7 @@ int umdkRemoteAcquire(
 	}
 
 	// Read saved registers
-	status = umdkDirectReadBytes(handle, 0x40040C, 18*4, u->bytes, error);
+	status = umdkDirectReadBytes(handle, CMD_REGS, 18*4, u->bytes, error);
 	CHECK_STATUS(status, status, cleanup);
 	for ( i = 0; i < 18; i++ ) {
 		u->longs[i] = bigEndian32(u->longs[i]);
