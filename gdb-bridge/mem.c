@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <string.h>
 #include <libfpgalink.h>
 #include <liberror.h>
 #include "range.h"
@@ -100,8 +102,8 @@ int umdkDirectWriteBytes(
 
 	// Next verify that the write is to an even address, and has even countgth
 	//
-	CHECK_STATUS(address&1, 2, cleanup, "umdkDirectWriteData(): Address must be even!");
-	CHECK_STATUS(count&1, 3, cleanup, "umdkDirectWriteData(): Count must be even!");
+	CHECK_STATUS(address&1, 2, cleanup, "umdkDirectWriteBytes(): Address must be even!");
+	CHECK_STATUS(count&1, 3, cleanup, "umdkDirectWriteBytes(): Count must be even!");
 
 	// Get word-count and word-addres
 	wordAddr = address / 2;
@@ -165,6 +167,15 @@ cleanup:
 	return retVal;
 }
 
+static void prepMemCtrlCmd(uint8 cmd, uint32 addr, uint8 *buf) {
+	buf[0] = cmd;
+	buf[3] = (uint8)addr;
+	addr >>= 8;
+	buf[2] = (uint8)addr;
+	addr >>= 8;
+	buf[1] = (uint8)addr;
+}
+
 int umdkDirectReadBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
 	const char **error)
@@ -174,6 +185,7 @@ int umdkDirectReadBytes(
 	uint8 command[8];
 	uint32 wordAddr;
 	uint32 wordCount;
+	uint8 *tmpBuf = NULL;
 
 	// First verify the write is in a legal range
 	//
@@ -194,38 +206,67 @@ int umdkDirectReadBytes(
 		);
 	}
 
-	// Next verify that the write is to an even address, and has even length
-	//
-	CHECK_STATUS(address&1, 2, cleanup, "umdkDirectRead(): Address must be even!");
-	CHECK_STATUS(count&1, 3, cleanup, "umdkDirectRead(): Count must be even!");
-
-	// Get word-count and word-address
-	wordAddr = address / 2;
-	wordCount = count / 2;
-
-	// Prepare the write command
-	command[0] = 0x00; // set mem-pipe pointer
-	command[3] = (uint8)wordAddr;
-	wordAddr >>= 8;
-	command[2] = (uint8)wordAddr;
-	wordAddr >>= 8;
-	command[1] = (uint8)wordAddr;
-	
-	command[4] = 0x40; // read words from SDRAM
-	command[7] = (uint8)wordCount;
-	wordCount >>= 8;
-	command[6] = (uint8)wordCount;
-	wordCount >>= 8;
-	command[5] = (uint8)wordCount;
-
-	// Send the read request
-	status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
-	CHECK_STATUS(status, 4, cleanup);
-
-	// Receive the data
-	status = flReadChannel(handle, 0x00, count, data, NULL);
-	CHECK_STATUS(status, 5, cleanup);
+	// Reads from odd addresses or for odd lengths need to be done via a temporary buffer
+	if ( address & 1 ) {
+		// Odd address
+		tmpBuf = (uint8*)malloc(count);
+		CHECK_STATUS(!tmpBuf, 2, cleanup, "umdkDirectReadBytes(): Allocation error!");
+		wordAddr = address / 2;
+		wordCount = 1 + count / 2;
+		
+		// Prepare the read command
+		prepMemCtrlCmd(0x00, wordAddr, command);
+		prepMemCtrlCmd(0x40, wordCount, command+4);
+		
+		// Send the read request
+		status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+		CHECK_STATUS(status, 3, cleanup);
+		
+		// Receive the data
+		status = flReadChannel(handle, 0x00, 2*wordCount, tmpBuf, NULL);
+		CHECK_STATUS(status, 4, cleanup);
+		memcpy(data, tmpBuf+1, count);
+	} else {
+		// Even address
+		if ( count & 1 ) {
+			// Even address, odd count
+			tmpBuf = (uint8*)malloc(count);
+			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkDirectReadBytes(): Allocation error!");
+			wordAddr = address / 2;
+			wordCount = 1 + count / 2;
+			
+			// Prepare the read command
+			prepMemCtrlCmd(0x00, wordAddr, command);
+			prepMemCtrlCmd(0x40, wordCount, command+4);
+			
+			// Send the read request
+			status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+			CHECK_STATUS(status, 6, cleanup);
+			
+			// Receive the data
+			status = flReadChannel(handle, 0x00, 2*wordCount, tmpBuf, NULL);
+			CHECK_STATUS(status, 7, cleanup);
+			memcpy(data, tmpBuf, count);
+		} else {
+			// Even address, even count
+			wordAddr = address / 2;
+			wordCount = count / 2;
+			
+			// Prepare the read command
+			prepMemCtrlCmd(0x00, wordAddr, command);
+			prepMemCtrlCmd(0x40, wordCount, command+4);
+			
+			// Send the read request
+			status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+			CHECK_STATUS(status, 8, cleanup);
+			
+			// Receive the data
+			status = flReadChannel(handle, 0x00, count, data, NULL);
+			CHECK_STATUS(status, 9, cleanup);
+		}
+	}
 cleanup:
+	free(tmpBuf);
 	return retVal;
 }
 
