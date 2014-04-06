@@ -141,10 +141,10 @@ extern const uint8 monitorCodeData[];
 TEST(Range_testStartMonitor) {
 	int retVal;
 	uint8 buf[0x8000];
-	uint32 vbAddr;
-	uint16 oldOp, cmdFlag;
 	uint8 *exampleData;
 	size_t exampleLength;
+	struct Registers regs;
+	uint32 vbAddr;
 
 	// Put MD in RESET
 	buf[0] = 1;
@@ -155,6 +155,11 @@ TEST(Range_testStartMonitor) {
 	retVal = umdkDirectWriteFile(g_handle, 0x000000, "../../m68k/example/example.bin", NULL);
 	CHECK_EQUAL(0, retVal);
 
+	// Load vblank address
+	retVal = umdkDirectReadLong(g_handle, 0x78, &vbAddr, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Load separately for comparison
 	exampleData = flLoadFile("../../m68k/example/example.bin", &exampleLength);
 	CHECK(exampleData);
 
@@ -163,12 +168,8 @@ TEST(Range_testStartMonitor) {
 		retVal = umdkDirectWriteBytes(g_handle, 0x400000, monitorCodeSize, monitorCodeData, NULL);
 		CHECK_EQUAL(0, retVal);
 		
-		// Clear command area
-		retVal = umdkDirectWriteLong(g_handle, 0x400400, 0, NULL); // cmdFlag & cmdIndex
-		CHECK_EQUAL(0, retVal);
-		retVal = umdkDirectWriteLong(g_handle, 0x400404, 0, NULL); // address
-		CHECK_EQUAL(0, retVal);
-		retVal = umdkDirectWriteLong(g_handle, 0x400408, 0, NULL); // length
+		// Clear cmdFlag
+		retVal = umdkDirectWriteWord(g_handle, 0x400400, 0, NULL);
 		CHECK_EQUAL(0, retVal);
 		
 		// Release MD from RESET
@@ -176,27 +177,21 @@ TEST(Range_testStartMonitor) {
 		retVal = flWriteChannel(g_handle, 1, 1, buf, NULL);
 		CHECK_EQUAL(0, retVal);
 		
-		// Read address of VDP vertical interrupt vector
-		retVal = umdkDirectReadLong(g_handle, 0x78, &vbAddr, NULL);
+		// Acquire monitor
+		retVal = umdkRemoteAcquire(g_handle, &regs, NULL);
 		CHECK_EQUAL(0, retVal);
-		
-		// Read opcode at vbAddr
-		retVal = umdkDirectReadWord(g_handle, vbAddr, &oldOp, NULL);
-		CHECK_EQUAL(0, retVal);
-		
-		// Replace opcode at vbAddr with illegal instruction, causing MD to enter monitor
-		retVal = umdkDirectWriteWord(g_handle, vbAddr, 0x4AFC, NULL);
-		CHECK_EQUAL(0, retVal);
-		
-		// Wait for monitor to start
-		do {
-			retVal = umdkDirectReadWord(g_handle, 0x400400, &cmdFlag, NULL);
-			CHECK_EQUAL(0, retVal);
-		} while ( cmdFlag == 0x0000 );
-		
-		// Write old opcode back at vbAddr
-		retVal = umdkDirectWriteWord(g_handle, vbAddr, oldOp, NULL);
-		CHECK_EQUAL(0, retVal);
+
+		printf("D: 0        1        2        3         4        5        6        7\n");
+		printf(
+			"D: %08X %08X %08X %08X  %08X %08X %08X %08X\n",
+			regs.d0, regs.d1, regs.d2, regs.d3, regs.d4, regs.d5, regs.d6, regs.d7);
+		printf(
+			"A: %08X %08X %08X %08X  %08X %08X %08X %08X\n",
+			regs.a0, regs.a1, regs.a2, regs.a3, regs.a4, regs.a5, regs.a6, regs.a7);
+		printf("SR=%08X  PC=%08X\n", regs.sr, regs.pc);
+
+		// Verify we're at the vblank address
+		CHECK_EQUAL(regs.pc, vbAddr);
 
 		// Execute remote read of the example ROM, and verify
 		retVal = umdkExecuteCommand(g_handle, 2, 0, exampleLength, NULL, buf, NULL);

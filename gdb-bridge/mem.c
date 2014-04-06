@@ -1,6 +1,7 @@
 #include <libfpgalink.h>
 #include <liberror.h>
 #include "range.h"
+#include "mem.h"
 
 int umdkDirectWriteFile(
 	struct FLContext *handle, uint32 address, const char *fileName,
@@ -300,6 +301,59 @@ int umdkExecuteCommand(
 	if ( recvData ) {
 		status = umdkDirectReadBytes(handle, 0x400454, length, recvData, error);
 		CHECK_STATUS(status, status, cleanup);
+	}
+cleanup:
+	return retVal;
+}
+
+int umdkRemoteAcquire(
+	struct FLContext *handle, struct Registers *regs, const char **error)
+{
+	int retVal = 0;
+	int status;
+	uint32 vbAddr;
+	uint16 oldOp, cmdFlag;
+	union RegUnion {
+		struct Registers reg;
+		uint32 longs[18];
+		uint8 bytes[18*4];
+	} *const u = (union RegUnion *)regs;
+	int i;
+
+	// See if the monitor is already running
+	status = umdkDirectReadWord(handle, 0x400400, &cmdFlag, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// If monitor is already running, we've got nothing to do. Otherwise...
+	if ( cmdFlag != 0x0001 ) {
+		// Read address of VDP vertical interrupt vector
+		status = umdkDirectReadLong(handle, 0x78, &vbAddr, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Read opcode at vbAddr
+		status = umdkDirectReadWord(handle, vbAddr, &oldOp, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Replace opcode at vbAddr with illegal instruction, causing MD to enter monitor
+		status = umdkDirectWriteWord(handle, vbAddr, 0x4AFC, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Wait for monitor to start
+		do {
+			status = umdkDirectReadWord(handle, 0x400400, &cmdFlag, error);
+			CHECK_STATUS(status, status, cleanup);
+		} while ( cmdFlag != 0x0001 );
+		
+		// Write old opcode back at vbAddr
+		status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
+		CHECK_STATUS(status, status, cleanup);
+	}
+
+	// Read saved registers
+	status = umdkDirectReadBytes(handle, 0x40040C, 18*4, u->bytes, error);
+	CHECK_STATUS(status, status, cleanup);
+	for ( i = 0; i < 18; i++ ) {
+		u->longs[i] = bigEndian32(u->longs[i]);
 	}
 cleanup:
 	return retVal;

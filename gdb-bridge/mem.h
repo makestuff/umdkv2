@@ -7,6 +7,30 @@
 extern "C" {
 #endif
 
+	// 68000 registers:
+	struct Registers {
+		uint32 d0;
+		uint32 d1;
+		uint32 d2;
+		uint32 d3;
+		uint32 d4;
+		uint32 d5;
+		uint32 d6;
+		uint32 d7;
+		
+		uint32 a0;
+		uint32 a1;
+		uint32 a2;
+		uint32 a3;
+		uint32 a4;
+		uint32 a5;
+		uint32 a6;
+		uint32 a7;
+		
+		uint32 sr;
+		uint32 pc;
+	};
+
 	// ---------------------------------------------------------------------------------------------
 	// Direct write operations
 	//
@@ -46,6 +70,10 @@ extern "C" {
 	// ---------------------------------------------------------------------------------------------
 	// Issuing commands
 	//
+	int umdkRemoteAcquire(
+		struct FLContext *handle, struct Registers *regs, const char **error
+	) WARN_UNUSED_RESULT;
+
 	int umdkExecuteCommand(
 		struct FLContext *handle, uint16 command, uint32 address, uint32 length,
 		const uint8 *sendData, uint8 *recvData, const char **error
