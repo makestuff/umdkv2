@@ -327,7 +327,7 @@ int umdkRemoteAcquire(
 {
 	int retVal = 0;
 	int status;
-	uint32 vbAddr;
+	uint32 vbAddr, oldIL;
 	uint16 oldOp, cmdFlag;
 	union RegUnion {
 		struct Registers reg;
@@ -345,11 +345,19 @@ int umdkRemoteAcquire(
 		// Read address of VDP vertical interrupt vector
 		status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
 		CHECK_STATUS(status, status, cleanup);
+
+		// Read illegal instruction vector
+		status = umdkDirectReadLong(handle, IL_VEC, &oldIL, error);
+		CHECK_STATUS(status, status, cleanup);
 		
 		// Read opcode at vbAddr
 		status = umdkDirectReadWord(handle, vbAddr, &oldOp, error);
 		CHECK_STATUS(status, status, cleanup);
 		
+		// Write monitor address to illegal instruction vector
+		status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
+		CHECK_STATUS(status, status, cleanup);
+
 		// Replace opcode at vbAddr with illegal instruction, causing MD to enter monitor
 		status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, error);
 		CHECK_STATUS(status, status, cleanup);
@@ -360,8 +368,12 @@ int umdkRemoteAcquire(
 			CHECK_STATUS(status, status, cleanup);
 		} while ( cmdFlag != CF_READY );
 		
-		// Write old opcode back at vbAddr
+		// Restore old opcode back at vbAddr
 		status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
+		CHECK_STATUS(status, status, cleanup);
+
+		// Restore illegal instruction vector
+		status = umdkDirectWriteLong(handle, IL_VEC, oldIL, error);
 		CHECK_STATUS(status, status, cleanup);
 	}
 
@@ -446,10 +458,68 @@ int umdkStep(
 		uint32 longs[18];
 		uint8 bytes[18*4];
 	} *const u = (union RegUnion *)regs;
+	uint32 oldTR;
 	int i;
+
+	// Read trace vector
+	status = umdkDirectReadLong(handle, TR_VEC, &oldTR, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Write monitor address to trace vector
+	status = umdkDirectWriteLong(handle, TR_VEC, MONITOR, error);
+	CHECK_STATUS(status, status, cleanup);
 
 	// Execute step
 	status = umdkExecuteCommand(handle, CMD_STEP, 0, 0, NULL, NULL, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Restore old trace vector
+	status = umdkDirectWriteLong(handle, TR_VEC, oldTR, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Read saved registers
+	status = umdkDirectReadBytes(handle, CMD_REGS, 18*4, u->bytes, error);
+	CHECK_STATUS(status, status, cleanup);
+	for ( i = 0; i < 18; i++ ) {
+		u->longs[i] = bigEndian32(u->longs[i]);
+	}
+cleanup:
+	return retVal;
+}
+
+int umdkCont(
+	struct FLContext *handle, struct Registers *regs, const char **error)
+{
+	int retVal = 0;
+	int status;
+	union RegUnion {
+		struct Registers reg;
+		uint32 longs[18];
+		uint8 bytes[18*4];
+	} *const u = (union RegUnion *)regs;
+	int i;
+	uint8 byte;
+
+	// Find out whether we're in reset or not
+	status = flReadChannel(handle, 0x01, 1, &byte, error);
+	CHECK_STATUS(status, 9, cleanup);
+	if ( byte & 1 ) {
+		// MD in reset - start it running
+		byte &= 0xFE;
+		status = flWriteChannelAsync(handle, 0x01, 1, &byte, error);
+		CHECK_STATUS(status, 9, cleanup);
+	} else {
+		// MD not in reset
+		status = umdkRemoteAcquire(handle, regs, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Execute cont
+		status = umdkExecuteCommand(handle, CMD_CONT, 0, 0, NULL, NULL, error);
+		CHECK_STATUS(status, status, cleanup);
+	}
+
+	// Acquire monitor
+	status = umdkRemoteAcquire(handle, regs, error);
 	CHECK_STATUS(status, status, cleanup);
 
 	// Read saved registers

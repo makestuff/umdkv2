@@ -331,3 +331,19 @@ TEST(Range_testStep) {
 	printRegs(&regs);
 	CHECK(regs.pc != oldPC);
 }
+
+TEST(Range_testCont) {
+	int retVal;
+	struct Registers regs;
+	uint32 oldVB;
+
+	// Load vblank address (should be current PC)
+	retVal = umdkDirectReadLong(g_handle, VB_VEC, &oldVB, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Continue
+	retVal = umdkCont(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK(regs.pc == oldVB);
+}

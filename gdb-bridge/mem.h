@@ -45,6 +45,8 @@ extern "C" {
 	} Command;
 
 	const uint16 ILLEGAL = 0x4AFC;
+	const uint32 IL_VEC = 0x000010;
+	const uint32 TR_VEC = 0x000024;
 	const uint32 VB_VEC = 0x000078;
 	const uint32 MONITOR = 0x400000;
 	const uint32 CMD_FLAG = 0x400400;
@@ -125,6 +127,9 @@ extern "C" {
 		struct FLContext *handle, struct Registers *regs, const char **error
 	) WARN_UNUSED_RESULT;
 
+	int umdkCont(
+		struct FLContext *handle, struct Registers *regs, const char **error
+	) WARN_UNUSED_RESULT;
 
 #ifdef __cplusplus
 }
