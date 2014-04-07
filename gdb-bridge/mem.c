@@ -325,8 +325,7 @@ int umdkRemoteAcquire(
 {
 	int retVal = 0;
 	int status;
-	uint32 vbAddr, oldIL;
-	uint16 oldOp, cmdFlag;
+	uint16 cmdFlag;
 	union RegUnion {
 		struct Registers reg;
 		uint32 longs[18];
