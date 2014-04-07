@@ -15,14 +15,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ROOT    := $(realpath ../../../../..)
-DEPS    := fpgalink error argtable2
+DEPS    := fpgalink error
 TYPE    := exe
 SUBDIRS := tests
 PRE_BUILD := gen_mon
 EXTRA_CC_SRCS := monitor/monitor.c
 EXTRA_CLEAN := monitor/monitor.c
-LINK_EXTRALIBS_REL := m68k.o
-LINK_EXTRALIBS_DBG := $(LINK_EXTRALIBS_REL)
 
 -include $(ROOT)/common/top.mk
 

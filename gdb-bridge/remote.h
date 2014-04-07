@@ -2,7 +2,7 @@
 #define REMOTE_H
 
 #define SOCKET_BUFFER_SIZE 1024
-struct I68K;
-int processMessage(const char *buf, int size, int conn, struct I68K *cpu);
+struct FLContext;
+int processMessage(const char *buf, int size, int conn, struct FLContext *handle);
 
 #endif

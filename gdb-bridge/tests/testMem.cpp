@@ -31,7 +31,7 @@ static void printRegs(const struct Registers *regs) {
 		regs->d0, regs->d1, regs->d2, regs->d3, regs->d4, regs->d5, regs->d6, regs->d7);
 	printf(
 		"A: %08X %08X %08X %08X  %08X %08X %08X %08X\n",
-		regs->a0, regs->a1, regs->a2, regs->a3, regs->a4, regs->a5, regs->a6, regs->a7);
+		regs->a0, regs->a1, regs->a2, regs->a3, regs->a4, regs->a5, regs->fp, regs->sp);
 	printf("SR=%08X  PC=%08X\n", regs->sr, regs->pc);
 }
 
@@ -164,11 +164,11 @@ TEST(Range_testDirectReadbackBytes) {
 	CHECK_ARRAY_EQUAL(bytes, readback, 4);
 
 	// Write four bytes to bottom of page 0 (should work)
-	retVal = umdkDirectWriteBytes(g_handle, CMD_FLAG, 4, bytes, NULL);
+	retVal = umdkDirectWriteBytes(g_handle, CB_FLAG, 4, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Read them back
-	retVal = umdkDirectReadBytes(g_handle, CMD_FLAG, 4, readback, NULL);
+	retVal = umdkDirectReadBytes(g_handle, CB_FLAG, 4, readback, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Compare the response
@@ -210,7 +210,7 @@ TEST(Range_testStartMonitor) {
 		CHECK_EQUAL(0, retVal);
 		
 		// Clear cmdFlag
-		retVal = umdkDirectWriteWord(g_handle, CMD_FLAG, 0, NULL);
+		retVal = umdkDirectWriteWord(g_handle, CB_FLAG, 0, NULL);
 		CHECK_EQUAL(0, retVal);
 		
 		// Release MD from RESET

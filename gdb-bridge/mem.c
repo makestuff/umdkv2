@@ -58,9 +58,9 @@ int umdkDirectWriteFile(
 	prepMemCtrlCmd(0x80, wordCount, command+4);
 
 	// Do the write
-	status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+	status = flWriteChannelAsync(handle, 0x00, 8, command, error);
 	CHECK_STATUS(status, 4, cleanup);
-	status = flWriteChannelAsync(handle, 0x00, byteCount, fileData, NULL);
+	status = flWriteChannelAsync(handle, 0x00, byteCount, fileData, error);
 	CHECK_STATUS(status, 5, cleanup);
 cleanup:
 	flFreeFile(fileData);
@@ -108,9 +108,9 @@ int umdkDirectWriteBytes(
 	prepMemCtrlCmd(0x80, wordCount, command+4);
 
 	// Do the write
-	status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+	status = flWriteChannelAsync(handle, 0x00, 8, command, error);
 	CHECK_STATUS(status, 4, cleanup);
-	status = flWriteChannelAsync(handle, 0x00, count, data, NULL);
+	status = flWriteChannelAsync(handle, 0x00, count, data, error);
 	CHECK_STATUS(status, 5, cleanup);
 cleanup:
 	return retVal;
@@ -192,11 +192,11 @@ int umdkDirectReadBytes(
 		prepMemCtrlCmd(0x40, wordCount, command+4);
 		
 		// Send the read request
-		status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+		status = flWriteChannelAsync(handle, 0x00, 8, command, error);
 		CHECK_STATUS(status, 3, cleanup);
 		
 		// Receive the data
-		status = flReadChannel(handle, 0x00, 2*wordCount, tmpBuf, NULL);
+		status = flReadChannel(handle, 0x00, 2*wordCount, tmpBuf, error);
 		CHECK_STATUS(status, 4, cleanup);
 		memcpy(data, tmpBuf+1, count);
 	} else {
@@ -213,11 +213,11 @@ int umdkDirectReadBytes(
 			prepMemCtrlCmd(0x40, wordCount, command+4);
 			
 			// Send the read request
-			status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+			status = flWriteChannelAsync(handle, 0x00, 8, command, error);
 			CHECK_STATUS(status, 6, cleanup);
 			
 			// Receive the data
-			status = flReadChannel(handle, 0x00, 2*wordCount, tmpBuf, NULL);
+			status = flReadChannel(handle, 0x00, 2*wordCount, tmpBuf, error);
 			CHECK_STATUS(status, 7, cleanup);
 			memcpy(data, tmpBuf, count);
 		} else {
@@ -230,11 +230,11 @@ int umdkDirectReadBytes(
 			prepMemCtrlCmd(0x40, wordCount, command+4);
 			
 			// Send the read request
-			status = flWriteChannelAsync(handle, 0x00, 8, command, NULL);
+			status = flWriteChannelAsync(handle, 0x00, 8, command, error);
 			CHECK_STATUS(status, 8, cleanup);
 			
 			// Receive the data
-			status = flReadChannel(handle, 0x00, count, data, NULL);
+			status = flReadChannel(handle, 0x00, count, data, error);
 			CHECK_STATUS(status, 9, cleanup);
 		}
 	}
@@ -289,31 +289,31 @@ int umdkExecuteCommand(
 
 	// Send the request data, if necessary
 	if ( sendData ) {
-		status = umdkDirectWriteBytes(handle, CMD_MEM, length, sendData, error);
+		status = umdkDirectWriteBytes(handle, CB_MEM, length, sendData, error);
 		CHECK_STATUS(status, status, cleanup);
 	}
 
 	// Setup the parameter block
-	status = umdkDirectWriteWord(handle, CMD_INDEX, command, error);
+	status = umdkDirectWriteWord(handle, CB_INDEX, command, error);
 	CHECK_STATUS(status, status, cleanup);
-	status = umdkDirectWriteLong(handle, CMD_ADDR, address, error);
+	status = umdkDirectWriteLong(handle, CB_ADDR, address, error);
 	CHECK_STATUS(status, status, cleanup);
-	status = umdkDirectWriteLong(handle, CMD_LEN, length, error);
+	status = umdkDirectWriteLong(handle, CB_LEN, length, error);
 	CHECK_STATUS(status, status, cleanup);
 
 	// Start the command executing
-	status = umdkDirectWriteWord(handle, CMD_FLAG, CF_CMD, error);
+	status = umdkDirectWriteWord(handle, CB_FLAG, CF_CMD, error);
 	CHECK_STATUS(status, status, cleanup);
 	
 	// Wait for execution to complete
 	do {
-		status = umdkDirectReadWord(handle, CMD_FLAG, &cmdFlag, NULL);
+		status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
 		CHECK_STATUS(status, status, cleanup);
 	} while ( cmdFlag == CF_CMD );
 
 	// Get the response data, if necessary
 	if ( recvData ) {
-		status = umdkDirectReadBytes(handle, CMD_MEM, length, recvData, error);
+		status = umdkDirectReadBytes(handle, CB_MEM, length, recvData, error);
 		CHECK_STATUS(status, status, cleanup);
 	}
 cleanup:
@@ -335,7 +335,7 @@ int umdkRemoteAcquire(
 	int i;
 
 	// See if the monitor is already running
-	status = umdkDirectReadWord(handle, CMD_FLAG, &cmdFlag, error);
+	status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
 	CHECK_STATUS(status, status, cleanup);
 
 	// If monitor is already running, we've got nothing to do. Otherwise...
@@ -362,7 +362,7 @@ int umdkRemoteAcquire(
 		
 		// Wait for monitor to start
 		do {
-			status = umdkDirectReadWord(handle, CMD_FLAG, &cmdFlag, error);
+			status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
 			CHECK_STATUS(status, status, cleanup);
 		} while ( cmdFlag != CF_READY );
 		
@@ -376,7 +376,7 @@ int umdkRemoteAcquire(
 	}
 
 	// Read saved registers
-	status = umdkDirectReadBytes(handle, CMD_REGS, 18*4, u->bytes, error);
+	status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
 	CHECK_STATUS(status, status, cleanup);
 	for ( i = 0; i < 18; i++ ) {
 		u->longs[i] = bigEndian32(u->longs[i]);
@@ -476,7 +476,7 @@ int umdkStep(
 	CHECK_STATUS(status, status, cleanup);
 
 	// Read saved registers
-	status = umdkDirectReadBytes(handle, CMD_REGS, 18*4, u->bytes, error);
+	status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
 	CHECK_STATUS(status, status, cleanup);
 	for ( i = 0; i < 18; i++ ) {
 		u->longs[i] = bigEndian32(u->longs[i]);
@@ -521,7 +521,7 @@ int umdkCont(
 	CHECK_STATUS(status, status, cleanup);
 
 	// Read saved registers
-	status = umdkDirectReadBytes(handle, CMD_REGS, 18*4, u->bytes, error);
+	status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
 	CHECK_STATUS(status, status, cleanup);
 	for ( i = 0; i < 18; i++ ) {
 		u->longs[i] = bigEndian32(u->longs[i]);
@@ -534,11 +534,15 @@ int umdkWriteBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
 	const char **error)
 {
-	// Determine from the range whether to use a direct or indirect write
-	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
-		return umdkDirectWriteBytes(handle, address, count, data, error);
+	if ( count ) {
+		// Determine from the range whether to use a direct or indirect write
+		if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
+			return umdkDirectWriteBytes(handle, address, count, data, error);
+		} else {
+			return umdkIndirectWriteBytes(handle, address, count, data, error);
+		}
 	} else {
-		return umdkIndirectWriteBytes(handle, address, count, data, error);
+		return 0;
 	}
 }
 
@@ -556,7 +560,7 @@ int umdkReadBytes(
 
 int umdkSetRegister(struct FLContext *handle, Register reg, uint32 value, const char **error) {
 	int retVal = 0;
-	int status = umdkDirectWriteLong(handle, CMD_REGS+4*reg, value, error);
+	int status = umdkDirectWriteLong(handle, CB_REGS+4*reg, value, error);
 	CHECK_STATUS(status, status, cleanup);
 cleanup:
 	return retVal;
@@ -564,7 +568,7 @@ cleanup:
 
 int umdkGetRegister(struct FLContext *handle, Register reg, uint32 *value, const char **error) {
 	int retVal = 0;
-	int status = umdkDirectReadLong(handle, CMD_REGS+4*reg, value, error);
+	int status = umdkDirectReadLong(handle, CB_REGS+4*reg, value, error);
 	CHECK_STATUS(status, status, cleanup);
 cleanup:
 	return retVal;

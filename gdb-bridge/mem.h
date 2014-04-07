@@ -24,8 +24,8 @@ extern "C" {
 		uint32 a3;
 		uint32 a4;
 		uint32 a5;
-		uint32 a6;
-		uint32 a7;
+		uint32 fp;
+		uint32 sp;
 		
 		uint32 sr;
 		uint32 pc;
@@ -50,17 +50,17 @@ extern "C" {
 		CMD_WRITE
 	} Command;
 
-	const uint16 ILLEGAL = 0x4AFC;
-	const uint32 IL_VEC = 0x000010;
-	const uint32 TR_VEC = 0x000024;
-	const uint32 VB_VEC = 0x000078;
-	const uint32 MONITOR = 0x400000;
-	const uint32 CMD_FLAG = 0x400400;
-	const uint32 CMD_INDEX = 0x400402;
-	const uint32 CMD_ADDR = 0x400404;
-	const uint32 CMD_LEN = 0x400408;
-	const uint32 CMD_REGS = 0x40040C;
-	const uint32 CMD_MEM = 0x400454;
+	#define ILLEGAL  0x4AFC
+	#define IL_VEC   0x000010
+	#define TR_VEC   0x000024
+	#define VB_VEC   0x000078
+	#define MONITOR  0x400000
+	#define CB_FLAG  (MONITOR + 0x400)
+	#define CB_INDEX (MONITOR + 0x402)
+	#define CB_ADDR  (MONITOR + 0x404)
+	#define CB_LEN   (MONITOR + 0x408)
+	#define CB_REGS  (MONITOR + 0x40C)
+	#define CB_MEM   (MONITOR + 0x454)
 
 	// ---------------------------------------------------------------------------------------------
 	// Direct write operations
@@ -122,6 +122,19 @@ extern "C" {
 	// Indirect read operations
 	//
 	int umdkIndirectReadBytes(
+		struct FLContext *handle, uint32 address, uint32 count, uint8 *data,
+		const char **error
+	) WARN_UNUSED_RESULT;
+
+	// ---------------------------------------------------------------------------------------------
+	// Generic read/write operations (delegate to direct/indirect as needed)
+	//
+	int umdkWriteBytes(
+		struct FLContext *handle, uint32 address, uint32 count, const uint8 *data,
+		const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkReadBytes(
 		struct FLContext *handle, uint32 address, uint32 count, uint8 *data,
 		const char **error
 	) WARN_UNUSED_RESULT;
