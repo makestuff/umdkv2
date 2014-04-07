@@ -18,7 +18,6 @@
 
 .text
 
-*.global start
 .global _hblank
 .global _vblank
 
@@ -26,10 +25,7 @@
 .extern vtimer
 .extern my_func
 
-monitor	= 0x400000
-	
 	.org    0x0000
-
 vectors:
 	dc.l	0x0		/* Initial Stack Address */
 	dc.l	start		/* Start of program Code */
