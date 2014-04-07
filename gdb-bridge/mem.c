@@ -529,3 +529,43 @@ int umdkCont(
 cleanup:
 	return retVal;
 }
+
+int umdkWriteBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
+	const char **error)
+{
+	// Determine from the range whether to use a direct or indirect write
+	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
+		return umdkDirectWriteBytes(handle, address, count, data, error);
+	} else {
+		return umdkIndirectWriteBytes(handle, address, count, data, error);
+	}
+}
+
+int umdkReadBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
+	const char **error)
+{
+	// Determine from the range whether to use a direct or indirect read
+	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
+		return umdkDirectReadBytes(handle, address, count, data, error);
+	} else {
+		return umdkIndirectReadBytes(handle, address, count, data, error);
+	}
+}
+
+int umdkSetRegister(struct FLContext *handle, Register reg, uint32 value, const char **error) {
+	int retVal = 0;
+	int status = umdkDirectWriteLong(handle, CMD_REGS+4*reg, value, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
+
+int umdkGetRegister(struct FLContext *handle, Register reg, uint32 *value, const char **error) {
+	int retVal = 0;
+	int status = umdkDirectReadLong(handle, CMD_REGS+4*reg, value, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}

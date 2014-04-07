@@ -347,3 +347,37 @@ TEST(Range_testCont) {
 	printRegs(&regs);
 	CHECK(regs.pc == oldVB);
 }
+
+TEST(Range_testRegGetSet) {
+	int retVal;
+	struct Registers regs;
+	uint32 val;
+
+	// Set D7 to magic value
+	retVal = umdkSetRegister(g_handle, D7, 0xCAFEBABE, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Step one instruction
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+
+	// Read D7
+	retVal = umdkGetRegister(g_handle, D7, &val, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_EQUAL(0xCAFEBABE, val);
+
+	// Set D7 to magic value
+	retVal = umdkSetRegister(g_handle, D7, 0xDEADF00D, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Step one instruction
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+
+	// Read D7
+	retVal = umdkGetRegister(g_handle, D7, &val, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_EQUAL(0xDEADF00D, val);
+}

@@ -2,6 +2,7 @@
 #define MEM_H
 
 #include <libfpgalink.h>
+#include "i68k.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,6 +130,16 @@ extern "C" {
 
 	int umdkCont(
 		struct FLContext *handle, struct Registers *regs, const char **error
+	) WARN_UNUSED_RESULT;
+
+	// ---------------------------------------------------------------------------------------------
+	// Register set/get operations
+	//
+	int umdkSetRegister(
+		struct FLContext *handle, Register reg, uint32 value, const char **error
+	) WARN_UNUSED_RESULT;
+	int umdkGetRegister(
+		struct FLContext *handle, Register reg, uint32 *value, const char **error
 	) WARN_UNUSED_RESULT;
 
 #ifdef __cplusplus
