@@ -2,7 +2,6 @@
 #define MEM_H
 
 #include <libfpgalink.h>
-#include "i68k.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +30,12 @@ extern "C" {
 		uint32 sr;
 		uint32 pc;
 	};
+
+	typedef enum {
+		D0, D1, D2, D3, D4, D5, D6, D7,
+		A0, A1, A2, A3, A4, A5, FP, SP,
+		SR, PC
+	} Register;
 
 	typedef enum {
 		CF_RUNNING,
