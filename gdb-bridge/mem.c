@@ -78,7 +78,6 @@ int umdkDirectWriteBytes(
 	uint32 wordCount;
 
 	// First verify the write is in a legal range
-	//
 	if ( isInside(MONITOR, 0x80000, address, count) ) {
 		// Write is to the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
 		// is fixed to the top 512KiB of SDRAM, so we need to transpose the MD virtual address to
@@ -162,10 +161,9 @@ int umdkDirectReadBytes(
 	uint32 wordCount;
 	uint8 *tmpBuf = NULL;
 
-	// First verify the write is in a legal range
-	//
+	// First verify the read is in a legal range
 	if ( isInside(MONITOR, 0x80000, address, count) ) {
-		// Write is to the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
+		// Read is from the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
 		// is fixed to the top 512KiB of SDRAM, so we need to transpose the MD virtual address to
 		// get the correct SDRAM physical address.
 		address += 0xb80000;
