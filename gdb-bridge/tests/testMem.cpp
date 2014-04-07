@@ -175,45 +175,35 @@ TEST(Range_testDirectReadbackBytes) {
 	CHECK_ARRAY_EQUAL(bytes, readback, 4);
 }
 
-// The monitor object code (assembled from 68000 source)
-extern const uint32 monitorCodeSize;
-extern const uint8 monitorCodeData[];
-
 TEST(Range_testStartMonitor) {
 	int retVal;
 	uint8 buf[0x8000];
 	uint8 *exampleData;
 	size_t exampleLength;
 	struct Registers regs;
-	uint32 vbAddr;
 
 	// Put MD in RESET
 	buf[0] = 1;
 	retVal = flWriteChannel(g_handle, 1, 1, buf, NULL);
 	CHECK_EQUAL(0, retVal);
 
-	// Load example ROM image
-	retVal = umdkDirectWriteFile(g_handle, 0x000000, "../../m68k/example/example.bin", NULL);
-	CHECK_EQUAL(0, retVal);
-
-	// Load vblank address
-	retVal = umdkDirectReadLong(g_handle, VB_VEC, &vbAddr, NULL);
+	// Load boot image
+	retVal = umdkDirectWriteFile(g_handle, 0x000000, "../monitor/boot.bin", NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Load separately for comparison
-	exampleData = flLoadFile("../../m68k/example/example.bin", &exampleLength);
+	exampleData = flLoadFile("../monitor/boot.bin", &exampleLength);
 	CHECK(exampleData);
-
 	if ( exampleData ) {
 		// Load the monitor image
-		retVal = umdkDirectWriteBytes(g_handle, MONITOR, monitorCodeSize, monitorCodeData, NULL);
+		retVal = umdkDirectWriteFile(g_handle, MONITOR, "../monitor/monitor.bin", NULL);
 		CHECK_EQUAL(0, retVal);
 		
 		// Clear cmdFlag
 		retVal = umdkDirectWriteWord(g_handle, CB_FLAG, 0, NULL);
 		CHECK_EQUAL(0, retVal);
 		
-		// Release MD from RESET
+		// Release MD from RESET - MD will execute the boot image (incl TMSS) & enter monitor
 		buf[0] = 0;
 		retVal = flWriteChannel(g_handle, 1, 1, buf, NULL);
 		CHECK_EQUAL(0, retVal);
@@ -225,10 +215,7 @@ TEST(Range_testStartMonitor) {
 		// Print registers
 		printRegs(&regs);
 
-		// Verify we're at the vblank address
-		CHECK_EQUAL(regs.pc, vbAddr);
-
-		// Execute remote read of the example ROM, and verify
+		// Execute remote read of the boot ROM, and verify
 		retVal = umdkExecuteCommand(g_handle, CMD_READ, 0x000000, exampleLength, NULL, buf, NULL);
 		CHECK_EQUAL(0, retVal);
 		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
@@ -295,57 +282,251 @@ TEST(Range_testIndirectReadNonAligned) {
 	CHECK_ARRAY_EQUAL(ex3, buf, 8);
 }
 
-TEST(Range_testStep) {
-	int retVal;
-	struct Registers regs;
-	uint32 oldPC;
-
-	// Load vblank address (should be current PC)
-	retVal = umdkDirectReadLong(g_handle, VB_VEC, &oldPC, NULL);
-	CHECK_EQUAL(0, retVal);
-
-	// Step one instruction
-	retVal = umdkStep(g_handle, &regs, NULL);
-	CHECK_EQUAL(0, retVal);
-	printRegs(&regs);
-	CHECK(regs.pc != oldPC);
-	
-	// Step one instruction
-	oldPC = regs.pc;
-	retVal = umdkStep(g_handle, &regs, NULL);
-	CHECK_EQUAL(0, retVal);
-	printRegs(&regs);
-	CHECK(regs.pc != oldPC);
-	
-	// Step one instruction
-	oldPC = regs.pc;
-	retVal = umdkStep(g_handle, &regs, NULL);
-	CHECK_EQUAL(0, retVal);
-	printRegs(&regs);
-	CHECK(regs.pc != oldPC);
-	
-	// Step one instruction
-	oldPC = regs.pc;
-	retVal = umdkStep(g_handle, &regs, NULL);
-	CHECK_EQUAL(0, retVal);
-	printRegs(&regs);
-	CHECK(regs.pc != oldPC);
-}
-
 TEST(Range_testCont) {
 	int retVal;
+	uint16 oldInsn;
 	struct Registers regs;
-	uint32 oldVB;
 
-	// Load vblank address (should be current PC)
-	retVal = umdkDirectReadLong(g_handle, VB_VEC, &oldVB, NULL);
+	// Load test ROM image
+	retVal = umdkDirectWriteFile(g_handle, 0x000200, "../monitor/test.bin", NULL);
+	CHECK_EQUAL(0, retVal);
+
+	printf("Range_testCont()\n");
+
+	// Set start address
+	retVal = umdkSetRegister(g_handle, PC, 0x000200, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Read word at 0x220 & replace with a breakpoint
+	retVal = umdkDirectReadWord(g_handle, 0x220, &oldInsn, NULL);
+	CHECK_EQUAL(0, retVal);
+	retVal = umdkDirectWriteWord(g_handle, 0x220, ILLEGAL, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Continue
 	retVal = umdkCont(g_handle, &regs, NULL);
 	CHECK_EQUAL(0, retVal);
 	printRegs(&regs);
-	CHECK(regs.pc == oldVB);
+	CHECK_EQUAL(0x220, regs.pc);
+	CHECK_EQUAL(0, regs.d0);
+	CHECK_EQUAL(0, regs.d1);
+	CHECK_EQUAL(0, regs.d2);
+	CHECK_EQUAL(0, regs.d3);
+	CHECK_EQUAL(0, regs.d4);
+	CHECK_EQUAL(0, regs.d5);
+	CHECK_EQUAL(0, regs.d6);
+	CHECK_EQUAL(0, regs.d7);
+	CHECK_EQUAL(0, regs.a0);
+	CHECK_EQUAL(0, regs.a1);
+	CHECK_EQUAL(0, regs.a2);
+	CHECK_EQUAL(0, regs.a3);
+	CHECK_EQUAL(0, regs.a4);
+	CHECK_EQUAL(0, regs.a5);
+	CHECK_EQUAL(0, regs.fp);
+	CHECK_EQUAL(0, regs.sp);
+
+	retVal = umdkDirectWriteWord(g_handle, 0x220, oldInsn, NULL);
+	CHECK_EQUAL(0, retVal);
+}
+
+TEST(Range_testStep) {
+	int retVal;
+	struct Registers regs;
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*1, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*2, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*3, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*4, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*5, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*6, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*7, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*8, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*9, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+	CHECK_EQUAL(0xAC44C7F0, regs.a0);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*10, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+	CHECK_EQUAL(0xAC44C7F0, regs.a0);
+	CHECK_EQUAL(0xEFBC0062, regs.a1);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*11, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+	CHECK_EQUAL(0xAC44C7F0, regs.a0);
+	CHECK_EQUAL(0xEFBC0062, regs.a1);
+	CHECK_EQUAL(0xC2A6A7A4, regs.a2);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*12, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+	CHECK_EQUAL(0xAC44C7F0, regs.a0);
+	CHECK_EQUAL(0xEFBC0062, regs.a1);
+	CHECK_EQUAL(0xC2A6A7A4, regs.a2);
+	CHECK_EQUAL(0x99DA044E, regs.a3);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*13, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+	CHECK_EQUAL(0xAC44C7F0, regs.a0);
+	CHECK_EQUAL(0xEFBC0062, regs.a1);
+	CHECK_EQUAL(0xC2A6A7A4, regs.a2);
+	CHECK_EQUAL(0x99DA044E, regs.a3);
+	CHECK_EQUAL(0x073763D6, regs.a4);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*14, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+	CHECK_EQUAL(0xAC44C7F0, regs.a0);
+	CHECK_EQUAL(0xEFBC0062, regs.a1);
+	CHECK_EQUAL(0xC2A6A7A4, regs.a2);
+	CHECK_EQUAL(0x99DA044E, regs.a3);
+	CHECK_EQUAL(0x073763D6, regs.a4);
+	CHECK_EQUAL(0x32E5A6C1, regs.a5);
+
+	retVal = umdkStep(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+	CHECK_EQUAL(0x220+6*15, regs.pc);
+	CHECK_EQUAL(0x410F9343, regs.d0);
+	CHECK_EQUAL(0x0E64E2F4, regs.d1);
+	CHECK_EQUAL(0x3371A5B6, regs.d2);
+	CHECK_EQUAL(0x83B174BA, regs.d3);
+	CHECK_EQUAL(0x118C9F22, regs.d4);
+	CHECK_EQUAL(0x9E175F2A, regs.d5);
+	CHECK_EQUAL(0x804D5E0E, regs.d6);
+	CHECK_EQUAL(0x22CA3C6F, regs.d7);
+	CHECK_EQUAL(0xAC44C7F0, regs.a0);
+	CHECK_EQUAL(0xEFBC0062, regs.a1);
+	CHECK_EQUAL(0xC2A6A7A4, regs.a2);
+	CHECK_EQUAL(0x99DA044E, regs.a3);
+	CHECK_EQUAL(0x073763D6, regs.a4);
+	CHECK_EQUAL(0x32E5A6C1, regs.a5);
+	CHECK_EQUAL(0x3BCA8003, regs.fp);
 }
 
 TEST(Range_testRegGetSet) {

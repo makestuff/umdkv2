@@ -17,17 +17,6 @@
 ROOT    := $(realpath ../../../../..)
 DEPS    := fpgalink error
 TYPE    := exe
-SUBDIRS := tests
-PRE_BUILD := gen_mon
-EXTRA_CC_SRCS := monitor/monitor.c
-EXTRA_CLEAN := monitor/monitor.c
+SUBDIRS := monitor tests
 
 -include $(ROOT)/common/top.mk
-
-MKMON := mkmon/$(PM)/rel/mkmon$(EXE)
-
-gen_mon: FORCE
-	make -C monitor
-	make -C mkmon rel
-	$(MKMON) monitor/monitor.bin monitor > monitor/monitor.c
-	make -C mkmon clean

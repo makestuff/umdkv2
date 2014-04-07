@@ -334,46 +334,11 @@ int umdkRemoteAcquire(
 	} *const u = (union RegUnion *)regs;
 	int i;
 
-	// See if the monitor is already running
-	status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// If monitor is already running, we've got nothing to do. Otherwise...
-	if ( cmdFlag != CF_READY ) {
-		// Read address of VDP vertical interrupt vector
-		status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
+	// Wait for monitor to start
+	do {
+		status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
 		CHECK_STATUS(status, status, cleanup);
-
-		// Read illegal instruction vector
-		status = umdkDirectReadLong(handle, IL_VEC, &oldIL, error);
-		CHECK_STATUS(status, status, cleanup);
-		
-		// Read opcode at vbAddr
-		status = umdkDirectReadWord(handle, vbAddr, &oldOp, error);
-		CHECK_STATUS(status, status, cleanup);
-		
-		// Write monitor address to illegal instruction vector
-		status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
-		CHECK_STATUS(status, status, cleanup);
-
-		// Replace opcode at vbAddr with illegal instruction, causing MD to enter monitor
-		status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, error);
-		CHECK_STATUS(status, status, cleanup);
-		
-		// Wait for monitor to start
-		do {
-			status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
-			CHECK_STATUS(status, status, cleanup);
-		} while ( cmdFlag != CF_READY );
-		
-		// Restore old opcode back at vbAddr
-		status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
-		CHECK_STATUS(status, status, cleanup);
-
-		// Restore illegal instruction vector
-		status = umdkDirectWriteLong(handle, IL_VEC, oldIL, error);
-		CHECK_STATUS(status, status, cleanup);
-	}
+	} while ( cmdFlag != CF_READY );
 
 	// Read saved registers
 	status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
@@ -456,12 +421,7 @@ int umdkStep(
 		uint32 longs[18];
 		uint8 bytes[18*4];
 	} *const u = (union RegUnion *)regs;
-	uint32 oldTR;
 	int i;
-
-	// Read trace vector
-	status = umdkDirectReadLong(handle, TR_VEC, &oldTR, error);
-	CHECK_STATUS(status, status, cleanup);
 
 	// Write monitor address to trace vector
 	status = umdkDirectWriteLong(handle, TR_VEC, MONITOR, error);
@@ -469,10 +429,6 @@ int umdkStep(
 
 	// Execute step
 	status = umdkExecuteCommand(handle, CMD_STEP, 0, 0, NULL, NULL, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Restore old trace vector
-	status = umdkDirectWriteLong(handle, TR_VEC, oldTR, error);
 	CHECK_STATUS(status, status, cleanup);
 
 	// Read saved registers
@@ -496,25 +452,14 @@ int umdkCont(
 		uint8 bytes[18*4];
 	} *const u = (union RegUnion *)regs;
 	int i;
-	uint8 byte;
 
-	// Find out whether we're in reset or not
-	status = flReadChannel(handle, 0x01, 1, &byte, error);
-	CHECK_STATUS(status, 9, cleanup);
-	if ( byte & 1 ) {
-		// MD in reset - start it running
-		byte &= 0xFE;
-		status = flWriteChannelAsync(handle, 0x01, 1, &byte, error);
-		CHECK_STATUS(status, 9, cleanup);
-	} else {
-		// MD not in reset
-		status = umdkRemoteAcquire(handle, regs, error);
-		CHECK_STATUS(status, status, cleanup);
+	// Write monitor address to illegal instruction vector
+	status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
+	CHECK_STATUS(status, status, cleanup);
 		
-		// Execute cont
-		status = umdkExecuteCommand(handle, CMD_CONT, 0, 0, NULL, NULL, error);
-		CHECK_STATUS(status, status, cleanup);
-	}
+	// Execute cont
+	status = umdkExecuteCommand(handle, CMD_CONT, 0, 0, NULL, NULL, error);
+	CHECK_STATUS(status, status, cleanup);
 
 	// Acquire monitor
 	status = umdkRemoteAcquire(handle, regs, error);
@@ -534,15 +479,16 @@ int umdkWriteBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
 	const char **error)
 {
-	if ( count ) {
-		// Determine from the range whether to use a direct or indirect write
-		if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
-			return umdkDirectWriteBytes(handle, address, count, data, error);
-		} else {
-			return umdkIndirectWriteBytes(handle, address, count, data, error);
-		}
-	} else {
+	// GDB sometimes requests zero-length writes, which succeed trivially
+	if ( count == 0 ) {
 		return 0;
+	}
+
+	// Determine from the range whether to use a direct or indirect write
+	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
+		return umdkDirectWriteBytes(handle, address, count, data, error);
+	} else {
+		return umdkIndirectWriteBytes(handle, address, count, data, error);
 	}
 }
 
@@ -573,3 +519,48 @@ int umdkGetRegister(struct FLContext *handle, Register reg, uint32 *value, const
 cleanup:
 	return retVal;
 }
+
+/*
+  CODE TO INTERRUPT EXECUTION (USER PRESSES ESCAPE IN GDB)
+
+	// See if the monitor is already running
+	status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// If monitor is already running, we've got nothing to do. Otherwise...
+	if ( cmdFlag != CF_READY ) {
+		// Read address of VDP vertical interrupt vector
+		status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
+		CHECK_STATUS(status, status, cleanup);
+
+		// Read illegal instruction vector
+		status = umdkDirectReadLong(handle, IL_VEC, &oldIL, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Read opcode at vbAddr
+		status = umdkDirectReadWord(handle, vbAddr, &oldOp, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Write monitor address to illegal instruction vector
+		status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
+		CHECK_STATUS(status, status, cleanup);
+
+		// Replace opcode at vbAddr with illegal instruction, causing MD to enter monitor
+		status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Wait for monitor to start
+		do {
+			status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
+			CHECK_STATUS(status, status, cleanup);
+		} while ( cmdFlag != CF_READY );
+		
+		// Restore old opcode back at vbAddr
+		status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
+		CHECK_STATUS(status, status, cleanup);
+
+		// Restore illegal instruction vector
+		status = umdkDirectWriteLong(handle, IL_VEC, oldIL, error);
+		CHECK_STATUS(status, status, cleanup);
+	}
+*/
