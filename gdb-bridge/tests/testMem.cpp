@@ -151,7 +151,7 @@ TEST(Range_testStartMonitor) {
 		//retVal = umdkDirectWriteWord(g_handle, CB_FLAG, 2, NULL);
 		//CHECK_EQUAL(0, retVal);
 
-		// Clear cmdFlag
+		// Clear cmdFlag to ensure remote acquire below doesn't spuriously succeed early
 		retVal = umdkDirectWriteWord(g_handle, CB_FLAG, 0, NULL);
 		CHECK_EQUAL(0, retVal);
 
