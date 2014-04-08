@@ -109,6 +109,89 @@ TEST(Range_testDirectReadBytesValidations) {
 	CHECK_EQUAL(1, retVal);
 }
 
+TEST(Range_testStartMonitor) {
+	int retVal;
+	uint8 buf[0x8000];
+	uint8 *exampleData;
+	size_t exampleLength;
+	struct Registers regs;
+
+	// Put MD in RESET
+	buf[0] = 1;
+	retVal = flWriteChannel(g_handle, 1, 1, buf, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Load boot image
+	retVal = umdkDirectWriteFile(g_handle, 0x000000, "../monitor/boot.bin", NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Load separately for comparison
+	exampleData = flLoadFile("../monitor/boot.bin", &exampleLength);
+	CHECK(exampleData);
+	if ( exampleData ) {
+		// Load the monitor image
+		retVal = umdkDirectWriteFile(g_handle, MONITOR, "../monitor/monitor.bin", NULL);
+		CHECK_EQUAL(0, retVal);
+		
+		// It would be good to have a test that compares a trace log for a known command (e.g
+		// indirect write of 0xCAFEBABEDEADF00D to 0x470000). Need to comment out the "move.w #1,
+		// cmdFlag" line in the monitor code so the monitor actually executes on entry. Then
+		// enable tracing below and store trace log. It would have to sanitise the trace FIFO too.
+		//
+		//retVal = umdkDirectWriteWord(g_handle, CB_INDEX, CMD_WRITE, NULL);
+		//CHECK_EQUAL(0, retVal);
+		//retVal = umdkDirectWriteLong(g_handle, CB_ADDR, 0x470000, NULL);
+		//CHECK_EQUAL(0, retVal);
+		//retVal = umdkDirectWriteLong(g_handle, CB_LEN, 8, NULL);
+		//CHECK_EQUAL(0, retVal);
+		//retVal = umdkDirectWriteLong(g_handle, CB_MEM, 0xCAFEBABE, NULL);
+		//CHECK_EQUAL(0, retVal);
+		//retVal = umdkDirectWriteLong(g_handle, CB_MEM+4, 0xDEADF00D, NULL);
+		//CHECK_EQUAL(0, retVal);
+		//retVal = umdkDirectWriteWord(g_handle, CB_FLAG, 2, NULL);
+		//CHECK_EQUAL(0, retVal);
+
+		// Clear cmdFlag
+		retVal = umdkDirectWriteWord(g_handle, CB_FLAG, 0, NULL);
+		CHECK_EQUAL(0, retVal);
+
+		// Execute readback of the boot ROM, and verify. This is actually necessary to ensure all
+		// the previous direct-writes have completed, before releasing the MD from reset. The MD
+		// actually takes a long time to come out of reset, so it'll probably work without, but
+		// it's safer with it in.
+		retVal = umdkDirectReadBytes(g_handle, 0x000000, exampleLength, buf, NULL);
+		CHECK_EQUAL(0, retVal);
+		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
+		
+		// Release MD from RESET - MD will execute the boot image (incl TMSS) & enter monitor.
+		buf[0] = 0; // run, no tracing
+		//buf[0] = 2; // run, with tracing
+		retVal = flWriteChannelAsync(g_handle, 1, 1, buf, NULL);
+		CHECK_EQUAL(0, retVal);
+		
+		// Read some stuff from the trace-FIFO
+		//retVal = flReadChannel(g_handle, 2, 3072, buf, NULL);
+		//CHECK_EQUAL(0, retVal);
+		//FILE *outFile = fopen("trace.bin", "wb");
+		//fwrite(buf, 3072, 1, outFile);
+		//fclose(outFile);
+
+		// Acquire monitor
+		retVal = umdkRemoteAcquire(g_handle, &regs, NULL);
+		CHECK_EQUAL(0, retVal);
+
+		// Print registers
+		printRegs(&regs);
+
+		// Execute remote read of the boot ROM, and verify
+		memset(buf, 0xCC, 0x8000);
+		retVal = umdkExecuteCommand(g_handle, CMD_READ, 0x000000, exampleLength, NULL, buf, NULL, NULL);
+		CHECK_EQUAL(0, retVal);
+		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
+		flFreeFile(exampleData);
+	}
+}
+
 TEST(Range_testDirectReadNonAligned) {
 	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D};
 	const uint8 ex0[]   = {0xCC, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D, 0xCC}; // even addr, even count
@@ -147,6 +230,55 @@ TEST(Range_testDirectReadNonAligned) {
 	CHECK_ARRAY_EQUAL(ex3, buf, 8);
 }
 
+TEST(Range_testIndirectReadNonAligned) {
+	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D};
+	const uint8 ex0[]   = {0xCC, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D, 0xCC}; // even addr, even count
+	const uint8 ex1[]   = {0xCC, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0xCC, 0xCC}; // even addr, odd count
+	const uint8 ex2[]   = {0xCC, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0xCC}; // odd addr,  even count
+	const uint8 ex3[]   = {0xCC, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xCC, 0xCC}; // odd addr,  odd count
+	uint8 buf[8];
+	int retVal;
+	
+	// Do indirect write
+	retVal = umdkWriteBytes(g_handle, 0xFF0000, 8, bytes, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Blat CB_MEM area to be sure there's no confusion from leftover data
+	memset(buf, 0xDD, 8);
+	retVal = umdkDirectWriteBytes(g_handle, CB_MEM, 8, buf, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Verify all eight
+	memset(buf, 0xCC, 8);
+	retVal = umdkReadBytes(g_handle, 0xFF0000, 8, buf, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(bytes, buf, 8);
+
+	// Read six bytes from an even address
+	memset(buf, 0xCC, 8);
+	retVal = umdkReadBytes(g_handle, 0xFF0002, 6, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex0, buf, 8);
+
+	// Read five bytes from an even address
+	memset(buf, 0xCC, 8);
+	retVal = umdkReadBytes(g_handle, 0xFF0002, 5, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex1, buf, 8);
+
+	// Read six bytes from an odd address
+	memset(buf, 0xCC, 8);
+	retVal = umdkReadBytes(g_handle, 0xFF0001, 6, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex2, buf, 8);
+
+	// Read five bytes from an odd address
+	memset(buf, 0xCC, 8);
+	retVal = umdkReadBytes(g_handle, 0xFF0001, 5, buf+1, NULL);
+	CHECK_EQUAL(0, retVal);
+	CHECK_ARRAY_EQUAL(ex3, buf, 8);
+}
+
 TEST(Range_testDirectReadbackBytes) {
 	const uint8 bytes[] = {0xDE, 0xAD, 0xF0, 0x0D};
 	uint8 readback[4];
@@ -175,55 +307,7 @@ TEST(Range_testDirectReadbackBytes) {
 	CHECK_ARRAY_EQUAL(bytes, readback, 4);
 }
 
-TEST(Range_testStartMonitor) {
-	int retVal;
-	uint8 buf[0x8000];
-	uint8 *exampleData;
-	size_t exampleLength;
-	struct Registers regs;
-
-	// Put MD in RESET
-	buf[0] = 1;
-	retVal = flWriteChannel(g_handle, 1, 1, buf, NULL);
-	CHECK_EQUAL(0, retVal);
-
-	// Load boot image
-	retVal = umdkDirectWriteFile(g_handle, 0x000000, "../monitor/boot.bin", NULL);
-	CHECK_EQUAL(0, retVal);
-
-	// Load separately for comparison
-	exampleData = flLoadFile("../monitor/boot.bin", &exampleLength);
-	CHECK(exampleData);
-	if ( exampleData ) {
-		// Load the monitor image
-		retVal = umdkDirectWriteFile(g_handle, MONITOR, "../monitor/monitor.bin", NULL);
-		CHECK_EQUAL(0, retVal);
-		
-		// Clear cmdFlag
-		retVal = umdkDirectWriteWord(g_handle, CB_FLAG, 0, NULL);
-		CHECK_EQUAL(0, retVal);
-		
-		// Release MD from RESET - MD will execute the boot image (incl TMSS) & enter monitor
-		buf[0] = 0;
-		retVal = flWriteChannel(g_handle, 1, 1, buf, NULL);
-		CHECK_EQUAL(0, retVal);
-		
-		// Acquire monitor
-		retVal = umdkRemoteAcquire(g_handle, &regs, NULL);
-		CHECK_EQUAL(0, retVal);
-
-		// Print registers
-		printRegs(&regs);
-
-		// Execute remote read of the boot ROM, and verify
-		retVal = umdkExecuteCommand(g_handle, CMD_READ, 0x000000, exampleLength, NULL, buf, NULL);
-		CHECK_EQUAL(0, retVal);
-		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
-		flFreeFile(exampleData);
-	}
-}
-
-TEST(Range_testIndirectWrite) {
+TEST(Range_testDirectWriteRead) {
 	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D};
 	const uint8 overwrite[] = {0x12, 0x34, 0x56, 0x78};
 	const uint8 expected[] = {0xCA, 0xFE, 0x12, 0x34, 0x56, 0x78, 0xF0, 0x0D};
@@ -234,8 +318,8 @@ TEST(Range_testIndirectWrite) {
 	retVal = umdkDirectWriteBytes(g_handle, 0x07FFF8, 8, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
-	// Overwrite four bytes using indirect write
-	retVal = umdkIndirectWriteBytes(g_handle, 0x07FFFA, 4, overwrite, NULL);
+	// Overwrite four bytes
+	retVal = umdkDirectWriteBytes(g_handle, 0x07FFFA, 4, overwrite, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Read six bytes from an even address
@@ -244,43 +328,27 @@ TEST(Range_testIndirectWrite) {
 	CHECK_ARRAY_EQUAL(expected, buf, 8);
 }
 
-TEST(Range_testIndirectReadNonAligned) {
+TEST(Range_testIndirectWriteRead) {
 	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D};
-	const uint8 ex0[]   = {0xCC, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D, 0xCC}; // even addr, even count
-	const uint8 ex1[]   = {0xCC, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0xCC, 0xCC}; // even addr, odd count
-	const uint8 ex2[]   = {0xCC, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0xCC}; // odd addr,  even count
-	const uint8 ex3[]   = {0xCC, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xCC, 0xCC}; // odd addr,  odd count
+	const uint8 overwrite[] = {0x12, 0x34, 0x56, 0x78};
+	const uint8 expected[] = {0xCA, 0xFE, 0x12, 0x34, 0x56, 0x78, 0xF0, 0x0D};
 	uint8 buf[8];
 	int retVal;
 
-	// Write eight bytes to page 0 (setup)
-	retVal = umdkDirectWriteBytes(g_handle, 0x07FFF8, 8, bytes, NULL);
+	// Direct-write eight bytes to page 1 (setup)
+	retVal = umdkWriteBytes(g_handle, 0xFF0000, 8, bytes, NULL);
+	CHECK_EQUAL(0, retVal);
+
+	// Overwrite four bytes
+	retVal = umdkWriteBytes(g_handle, 0xFF0002, 4, overwrite, NULL);
 	CHECK_EQUAL(0, retVal);
 
 	// Read six bytes from an even address
-	memset(buf, 0xCC, 8);
-	retVal = umdkIndirectReadBytes(g_handle, 0x07FFFA, 6, buf+1, NULL);
+	retVal = umdkReadBytes(g_handle, 0xFF0000, 8, buf, NULL);
 	CHECK_EQUAL(0, retVal);
-	CHECK_ARRAY_EQUAL(ex0, buf, 8);
-
-	// Read five bytes from an even address
-	memset(buf, 0xCC, 8);
-	retVal = umdkIndirectReadBytes(g_handle, 0x07FFFA, 5, buf+1, NULL);
-	CHECK_EQUAL(0, retVal);
-	CHECK_ARRAY_EQUAL(ex1, buf, 8);
-
-	// Read six bytes from an odd address
-	memset(buf, 0xCC, 8);
-	retVal = umdkIndirectReadBytes(g_handle, 0x07FFF9, 6, buf+1, NULL);
-	CHECK_EQUAL(0, retVal);
-	CHECK_ARRAY_EQUAL(ex2, buf, 8);
-
-	// Read five bytes from an odd address
-	memset(buf, 0xCC, 8);
-	retVal = umdkIndirectReadBytes(g_handle, 0x07FFF9, 5, buf+1, NULL);
-	CHECK_EQUAL(0, retVal);
-	CHECK_ARRAY_EQUAL(ex3, buf, 8);
+	CHECK_ARRAY_EQUAL(expected, buf, 8);
 }
+
 
 TEST(Range_testCont) {
 	int retVal;
@@ -290,8 +358,6 @@ TEST(Range_testCont) {
 	// Load test ROM image
 	retVal = umdkDirectWriteFile(g_handle, 0x000200, "../monitor/test.bin", NULL);
 	CHECK_EQUAL(0, retVal);
-
-	printf("Range_testCont()\n");
 
 	// Set start address
 	retVal = umdkSetRegister(g_handle, PC, 0x000200, NULL);

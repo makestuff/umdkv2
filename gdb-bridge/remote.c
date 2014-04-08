@@ -3,7 +3,7 @@
 //     buf - an incoming GDB remote message.
 //     size - the number of bytes in the message.
 //     conn - the file handle to write the response to: can be a TCP socket or something else.
-//     cpu - An instance of the I68K interface: can be an emulator or a real 68000.
+//     handle - an FPGALink handle
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +20,7 @@ static const char hexDigits[] = {
 	'8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
 };
 
+// The register names, used for debugging
 static const char *regNames[] = {
 	"D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
 	"A0", "A1", "A2", "A3", "A4", "A5", "FP", "SP",
@@ -36,24 +37,22 @@ static const char *regNames[] = {
 #define NUM_BRKPOINTS 8
 struct BreakInfo {
 	uint32 addr;
-	uint8 save[2];
+	uint16 save;
 };
 static struct BreakInfo breakpoints[] = {
-	{0x00000000, {0x00, 0x00}},
-	{0x00000000, {0x00, 0x00}},
-	{0x00000000, {0x00, 0x00}},
-	{0x00000000, {0x00, 0x00}},
-	{0x00000000, {0x00, 0x00}},
-	{0x00000000, {0x00, 0x00}},
-	{0x00000000, {0x00, 0x00}},
-	{0x00000000, {0x00, 0x00}}
+	{0x00000000, 0x0000},
+	{0x00000000, 0x0000},
+	{0x00000000, 0x0000},
+	{0x00000000, 0x0000},
+	{0x00000000, 0x0000},
+	{0x00000000, 0x0000},
+	{0x00000000, 0x0000},
+	{0x00000000, 0x0000}
 };
-static const uint8 brkOpCode[] = {0x4A, 0xFC};
 
 // Parse a series of somechar-separated hex numbers
 // e.g parseList("a9,0a:cafe", NULL, &v1, ',', &v2, ':', &v3, '\0', NULL);
 // Remember the NULL at the end!
-//
 static int parseList(const char *buf, const char **endPtr, ...) {
 	char *end;
 	va_list vl;
@@ -88,9 +87,11 @@ static void checksum(char *message) {
 	*message = hexDigits[checksum & 0x0F];
 }
 
+// TODO: Fix debug/error handling
 static const char *g_error = NULL;
 #define CHKERR(s) do { if ( s ) { if ( g_error ) { printf("%s\n", g_error); flFreeError(g_error); g_error = NULL; } else { printf("Error code %d\n", status); } } } while(0)
 
+// Process GDB write-register command
 static int cmdWriteRegister(const char *cmd, int conn, struct FLContext *handle) {
 	char *end;
 	uint32 reg;
@@ -112,6 +113,7 @@ static int cmdWriteRegister(const char *cmd, int conn, struct FLContext *handle)
 	return write(conn, VL(RESPONSE_OK));
 }
 
+// Process GDB read-register command
 static int cmdReadRegister(const char *cmd, int conn, struct FLContext *handle) {
 	uint32 reg, val;
 	char response[13];
@@ -129,6 +131,7 @@ static int cmdReadRegister(const char *cmd, int conn, struct FLContext *handle) 
 	}
 }
 
+// Process GDB read-all-registers command
 static int cmdReadRegisters(int conn, struct FLContext *handle) {
 	char response[2+8*18+3];
 	struct Registers regs;
@@ -150,6 +153,7 @@ static int cmdReadRegisters(int conn, struct FLContext *handle) {
 	return write(conn, response, 2+8*18+3);
 }
 
+// Process GDB write-memory command
 static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 	uint32 address, length, numBytes;
 	uint8 ioBuf[SOCKET_BUFFER_SIZE], *binary = ioBuf, byte;
@@ -176,6 +180,7 @@ static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 	return write(conn, VL(RESPONSE_OK));
 }
 
+// Process GDB read-memory command
 static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
 	uint32 address, length;
 	char msgBuf[SOCKET_BUFFER_SIZE];
@@ -212,6 +217,7 @@ static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
 	return write(conn, msgBuf, (size_t)(textPtr-msgBuf));
 }
 
+// Process GDB create-breakpoint command
 static int cmdCreateBreakpoint(const char *cmd, int conn, struct FLContext *handle) {
 	uint32 type, addr, kind;
 	int i, status;
@@ -240,14 +246,15 @@ static int cmdCreateBreakpoint(const char *cmd, int conn, struct FLContext *hand
 
 	// Insert the breakpoint into the free slot:
 	breakpoints[i].addr = addr;
-	status = umdkReadBytes(handle, addr, 2, breakpoints[i].save, &g_error);
+	status = umdkReadWord(handle, addr, &breakpoints[i].save, &g_error);
 	CHKERR(status);
-	status = umdkWriteBytes(handle, addr, 2, brkOpCode, &g_error);
+	status = umdkWriteWord(handle, addr, ILLEGAL, &g_error);
 	CHKERR(status);
 	printf("cmdCreateBreakpoint(0x%08X)\n", addr);
 	return write(conn, VL(RESPONSE_OK));
 }
 
+// Process GDB delete-breakpoint command
 static int cmdDeleteBreakpoint(const char *cmd, int conn, struct FLContext *handle) {
 	uint32 type, addr, kind;
 	int i, status;
@@ -261,7 +268,7 @@ static int cmdDeleteBreakpoint(const char *cmd, int conn, struct FLContext *hand
 	// Find the breakpoint
 	for ( i = 0; i < NUM_BRKPOINTS; i++ ) {
 		if ( breakpoints[i].addr == addr ) {
-			status = umdkWriteBytes(handle, addr, 2, breakpoints[i].save, &g_error);
+			status = umdkWriteWord(handle, addr, breakpoints[i].save, &g_error);
 			CHKERR(status);
 			printf("cmdDeleteBreakpoint(0x%08X) = OK!\n", addr);
 			breakpoints[i].addr = 0x00000000;
@@ -272,6 +279,7 @@ static int cmdDeleteBreakpoint(const char *cmd, int conn, struct FLContext *hand
 	return -3;
 }
 
+// Process GDB execute-step command
 static int cmdStep(int conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkStep(handle, &regs, &g_error);
@@ -280,6 +288,7 @@ static int cmdStep(int conn, struct FLContext *handle) {
 	return write(conn, VL(RESPONSE_SIG));
 }
 
+// Process GDB execute-continue command
 static int cmdContinue(int conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkCont(handle, &regs, &g_error);
@@ -288,6 +297,7 @@ static int cmdContinue(int conn, struct FLContext *handle) {
 	return write(conn, VL(RESPONSE_SIG));
 }
 
+// External interface: process incoming GDB RSP message
 int processMessage(const char *buf, int size, int conn, struct FLContext *handle) {
 	int returnCode = 0;
 	const char *const end = buf + size;

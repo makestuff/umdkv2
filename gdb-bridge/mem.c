@@ -5,15 +5,25 @@
 #include "range.h"
 #include "mem.h"
 
-static void prepMemCtrlCmd(uint8 cmd, uint32 addr, uint8 *buf) {
-	buf[0] = cmd;
-	buf[3] = (uint8)addr;
-	addr >>= 8;
-	buf[2] = (uint8)addr;
-	addr >>= 8;
-	buf[1] = (uint8)addr;
-}
+// Forward-declare local functions
+static void prepMemCtrlCmd(uint8 cmd, uint32 addr, uint8 *buf);
+static int umdkIndirectReadBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
+	const char **error);
+static int umdkIndirectWriteBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
+	const char **error);
 
+
+// *************************************************************************************************
+// **                                Direct read/write operations                                 **
+// *************************************************************************************************
+
+// Direct-write a binary file to the specified address. The area of memory to be written must reside
+// entirely within one of the two direct-writable memory areas (0x000000-0x07FFFF and
+// 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively) and must have an even start
+// address and length. The MegaDrive need not be suspended at the monitor.
+//
 int umdkDirectWriteFile(
 	struct FLContext *handle, uint32 address, const char *fileName,
 	const char **error)
@@ -67,6 +77,11 @@ cleanup:
 	return retVal;
 }
 
+// Direct-write a sequence of bytes to the specified address. The area of memory to be written must
+// reside entirely within one of the two direct-writable memory areas (0x000000-0x07FFFF and
+// 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively) and must have an even start
+// address and length. The MegaDrive need not be suspended at the monitor.
+//
 int umdkDirectWriteBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
 	const char **error)
@@ -116,6 +131,11 @@ cleanup:
 	return retVal;
 }
 
+// Direct-write one 16-bit word to the specified address. The target word must reside entirely
+// within one of the two direct-writable memory areas (0x000000-0x07FFFF and 0x400000-0x47FFFF,
+// mapped to SDRAM pages 0 and 31 respectively) and must have an even start address. The MegaDrive
+// need not be suspended at the monitor.
+//
 int umdkDirectWriteWord(
 	struct FLContext *handle, const uint32 address, uint16 value, const char **error)
 {
@@ -131,6 +151,11 @@ cleanup:
 	return retVal;
 }
 
+// Direct-write one 32-bit longword to the specified address. The target longword must reside
+// entirely within one of the two direct-writable memory areas (0x000000-0x07FFFF and
+// 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively) and must have an even start
+// address. The MegaDrive need not be suspended at the monitor.
+//
 int umdkDirectWriteLong(
 	struct FLContext *handle, const uint32 address, uint32 value, const char **error)
 {
@@ -150,6 +175,11 @@ cleanup:
 	return retVal;
 }
 
+// Direct-read a sequence of bytes from the specified address. The area of memory to be read must
+// reside entirely within one of the two direct-readable memory areas (0x000000-0x07FFFF and
+// 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively). It need not have an even start
+// address or length. The MegaDrive need not be suspended at the monitor.
+//
 int umdkDirectReadBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
 	const char **error)
@@ -243,6 +273,11 @@ cleanup:
 	return retVal;
 }
 
+// Direct-read one 16-bit word from the specified address. The source word must reside entirely
+// within one of the two direct-readable memory areas (0x000000-0x07FFFF and 0x400000-0x47FFFF,
+// mapped to SDRAM pages 0 and 31 respectively). It need not have an even start address. The
+// MegaDrive need not be suspended at the monitor.
+//
 int umdkDirectReadWord(
 	struct FLContext *handle, const uint32 address, uint16 *const pValue, const char **error)
 {
@@ -259,6 +294,11 @@ cleanup:
 	return retVal;
 }
 
+// Direct-read one 32-bit longword from the specified address. The source longword must reside
+// entirely within one of the two direct-readable memory areas (0x000000-0x07FFFF and
+// 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively). It need not have an even start
+// address. The MegaDrive need not be suspended at the monitor.
+//
 int umdkDirectReadLong(
 	struct FLContext *handle, const uint32 address, uint32 *const pValue, const char **error)
 {
@@ -279,13 +319,225 @@ cleanup:
 	return retVal;
 }
 
+
+// *************************************************************************************************
+// **                                Generic read/write operations                                **
+// *************************************************************************************************
+
+// Write a sequence of bytes to the specified address. If the region to be written resides entirely
+// within one of the two direct-writable memory areas (0x000000-0x07FFFF and 0x400000-0x47FFFF,
+// mapped to SDRAM pages 0 and 31 respectively), then the write is done directly without the need
+// for the MegaDrive to be suspended at the monitor. Otherwise, it is done through the monitor. In
+// both cases, the region to be written must have an even start address and length.
+//
+int umdkWriteBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
+	const char **error)
+{
+	// GDB sometimes requests zero-length writes, which succeed trivially
+	if ( count == 0 ) {
+		return 0;
+	}
+
+	// Determine from the range whether to use a direct or indirect write
+	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
+		return umdkDirectWriteBytes(handle, address, count, data, error);
+	} else {
+		return umdkIndirectWriteBytes(handle, address, count, data, error);
+	}
+}
+
+int umdkWriteWord(
+	struct FLContext *handle, const uint32 address, uint16 value, const char **error)
+{
+	int retVal = 0;
+	uint8 buf[2];
+	int status;
+	buf[1] = (uint8)value;
+	value >>= 8;
+	buf[0] = (uint8)value;
+	status = umdkWriteBytes(handle, address, 2, buf, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
+
+int umdkWriteLong(
+	struct FLContext *handle, const uint32 address, uint32 value, const char **error)
+{
+	int retVal = 0;
+	uint8 buf[4];
+	int status;
+	buf[3] = (uint8)value;
+	value >>= 8;
+	buf[2] = (uint8)value;
+	value >>= 8;
+	buf[1] = (uint8)value;
+	value >>= 8;
+	buf[0] = (uint8)value;
+	status = umdkWriteBytes(handle, address, 4, buf, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
+
+// Read a sequence of bytes from the specified address. If the region to be read resides entirely
+// within one of the two direct-readable memory areas (0x000000-0x07FFFF and 0x400000-0x47FFFF,
+// mapped to SDRAM pages 0 and 31 respectively), then the read is done directly without the need
+// for the MegaDrive to be suspended at the monitor. Otherwise, it is done through the monitor. In
+// both cases, the region to be read need not have an even start address and length.
+//
+int umdkReadBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
+	const char **error)
+{
+	// Determine from the range whether to use a direct or indirect read
+	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
+		return umdkDirectReadBytes(handle, address, count, data, error);
+	} else {
+		return umdkIndirectReadBytes(handle, address, count, data, error);
+	}
+}
+
+int umdkReadWord(
+	struct FLContext *handle, const uint32 address, uint16 *const pValue, const char **error)
+{
+	int retVal = 0;
+	uint8 buf[2];
+	uint16 value;
+	int status = umdkReadBytes(handle, address, 2, buf, error);
+	CHECK_STATUS(status, status, cleanup);
+	value = buf[0];
+	value <<= 8;
+	value |= buf[1];
+	*pValue = value;
+cleanup:
+	return retVal;
+}
+
+int umdkReadLong(
+	struct FLContext *handle, const uint32 address, uint32 *const pValue, const char **error)
+{
+	int retVal = 0;
+	uint8 buf[4];
+	uint32 value;
+	int status = umdkReadBytes(handle, address, 4, buf, error);
+	CHECK_STATUS(status, status, cleanup);
+	value = buf[0];
+	value <<= 8;
+	value |= buf[1];
+	value <<= 8;
+	value |= buf[2];
+	value <<= 8;
+	value |= buf[3];
+	*pValue = value;
+cleanup:
+	return retVal;
+}
+
+// *************************************************************************************************
+// **                                Low-level CPU-state operations                               **
+// *************************************************************************************************
+
+// Set the specified register to the specified value. The MegaDrive must be suspended at the
+// monitor.
+//
+int umdkSetRegister(struct FLContext *handle, Register reg, uint32 value, const char **error) {
+	int retVal = 0;
+	int status = umdkDirectWriteLong(handle, CB_REGS+4*reg, value, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
+
+// Read the specified register. The MegaDrive must be suspended at the monitor.
+//
+int umdkGetRegister(struct FLContext *handle, Register reg, uint32 *value, const char **error) {
+	int retVal = 0;
+	int status = umdkDirectReadLong(handle, CB_REGS+4*reg, value, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
+
+// Continually poll the "command flag" word at 0x400400 waiting for the MD to enter the monitor.
+// It will wait indefinitely for that to happen, so it's necessary to first place a breakpoint
+// somewhere in the code, or you'll be waiting forever.
+//
+int umdkRemoteAcquire(
+	struct FLContext *handle, struct Registers *regs, const char **error)
+{
+	int retVal = 0;
+	int status, i;
+	uint16 cmdFlag;
+	union RegUnion {
+		struct Registers reg;
+		uint32 longs[18];
+		uint8 bytes[18*4];
+	} *const u = (union RegUnion *)regs;
+
+	// Wait for monitor
+	do {
+		status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
+		CHECK_STATUS(status, status, cleanup);
+	} while ( cmdFlag != CF_READY );
+
+	// Read saved registers, if necessary
+	if ( regs ) {
+		status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
+		CHECK_STATUS(status, status, cleanup);
+		for ( i = 0; i < 18; i++ ) {
+			u->longs[i] = bigEndian32(u->longs[i]);
+		}
+	}
+cleanup:
+	return retVal;
+}
+
+/*
+// This is useful for debugging command sends
+//
+static
+int dumpCommandBlock(struct FLContext *handle, const char **error) {
+	int retVal = 0;
+	int status;
+	const int TMPSZ = 84 + 64;
+	uint8 tmpBuf[TMPSZ];
+	memset(tmpBuf, 0xCC, TMPSZ);
+	status = umdkDirectReadBytes(handle, 0x400400, TMPSZ, tmpBuf, error);
+	CHECK_STATUS(status, status, cleanup);
+	printf("   cmdFlag: "); dumpSimple(tmpBuf, 2);
+	printf("  cmdIndex: "); dumpSimple(tmpBuf+2, 2);
+	printf("   address: "); dumpSimple(tmpBuf+4, 4);
+	printf("    length: "); dumpSimple(tmpBuf+8, 4);
+	printf("  dataRegs: "); dumpSimple(tmpBuf+12, 4*8);
+	printf("  addrRegs: "); dumpSimple(tmpBuf+44, 4*8);
+	printf("   srAndPC: "); dumpSimple(tmpBuf+76, 4*2);
+	printf("    memory: "); dumpSimple(tmpBuf+84, 64);
+cleanup:
+	return retVal;
+}
+static const char *cmdNames[] = {
+	"CMD_STEP",
+	"CMD_CONT",
+	"CMD_READ",
+	"CMD_WRITE"
+};
+*/
+
+// Issue a low-level monitor command. This is used for indirect reads & writes, continue and step
+// operations. The MegaDrive must be suspended at the monitor. The sendData and recvData pointers
+// may be NULL if no data exchange is necessary. On the MD side the monitor just invokes code via
+// a jump-table indexed by the issued command.
+//
 int umdkExecuteCommand(
 	struct FLContext *handle, Command command, uint32 address, uint32 length,
-	const uint8 *sendData, uint8 *recvData, const char **error)
+	const uint8 *sendData, uint8 *recvData, struct Registers *regs,
+	const char **error)
 {
 	int retVal = 0;
 	int status;
-	uint16 cmdFlag;
+	//printf("umdkExecuteCommand(%s):\n", cmdNames[command]);
 
 	// Send the request data, if necessary
 	if ( sendData ) {
@@ -306,49 +558,87 @@ int umdkExecuteCommand(
 	CHECK_STATUS(status, status, cleanup);
 	
 	// Wait for execution to complete
-	do {
-		status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
-		CHECK_STATUS(status, status, cleanup);
-	} while ( cmdFlag == CF_CMD );
+	status = umdkRemoteAcquire(handle, regs, error);
+	CHECK_STATUS(status, status, cleanup);
 
 	// Get the response data, if necessary
 	if ( recvData ) {
 		status = umdkDirectReadBytes(handle, CB_MEM, length, recvData, error);
 		CHECK_STATUS(status, status, cleanup);
 	}
+
 cleanup:
 	return retVal;
 }
 
-int umdkRemoteAcquire(
+// Have the monitor continue execution with the SR trace bit set. This will cause precisely one
+// instruction of user code to execute and then return control to the monitor. Tracing only works if
+// the code being executed is running in user mode. If you try to step through supervisor-mode code,
+// the MegaDrive will just carry on executing, and never return control to the monitor. Meanwhile
+// this function will be patiently waiting. And that's a long wait for a train don't come.
+//
+int umdkStep(
 	struct FLContext *handle, struct Registers *regs, const char **error)
 {
 	int retVal = 0;
 	int status;
-	uint16 cmdFlag;
-	union RegUnion {
-		struct Registers reg;
-		uint32 longs[18];
-		uint8 bytes[18*4];
-	} *const u = (union RegUnion *)regs;
-	int i;
 
-	// Wait for monitor to start
-	do {
-		status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
-		CHECK_STATUS(status, status, cleanup);
-	} while ( cmdFlag != CF_READY );
-
-	// Read saved registers
-	status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
+	// Write monitor address to trace vector
+	status = umdkDirectWriteLong(handle, TR_VEC, MONITOR, error);
 	CHECK_STATUS(status, status, cleanup);
-	for ( i = 0; i < 18; i++ ) {
-		u->longs[i] = bigEndian32(u->longs[i]);
-	}
+
+	// Execute step
+	status = umdkExecuteCommand(handle, CMD_STEP, 0, 0, NULL, NULL, regs, error);
+	CHECK_STATUS(status, status, cleanup);
 cleanup:
 	return retVal;
 }
 
+// Tell the monitor to continue execution with the (possibly new) register/memory context, until
+// a breakpoint is hit. If there is no breakpoint in the execution-path, this function will wait
+// forever.
+//
+int umdkCont(
+	struct FLContext *handle, struct Registers *regs, const char **error)
+{
+	int retVal = 0;
+	int status;
+
+	// Write monitor address to illegal instruction vector
+	status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
+	CHECK_STATUS(status, status, cleanup);
+		
+	// Execute continue
+	status = umdkExecuteCommand(handle, CMD_CONT, 0, 0, NULL, NULL, regs, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
+
+// *************************************************************************************************
+// **                               Operations private to this file                               **
+// *************************************************************************************************
+
+// Prepare a low-level SDRAM-controller command. Three commands are accepted:
+//   0x00 <u24> - set the SDRAM-controller read/write address register to u24
+//   0x40 <u24> - read u24 16-bit words from the r/w addr reg, incrementing
+//   0x80 <u24> - write u24 16-bit words to the r/w addr reg, incrementing
+//
+static
+void prepMemCtrlCmd(uint8 cmd, uint32 addr, uint8 *buf) {
+	buf[0] = cmd;
+	buf[3] = (uint8)addr;
+	addr >>= 8;
+	buf[2] = (uint8)addr;
+	addr >>= 8;
+	buf[1] = (uint8)addr;
+}
+
+// Indirect-write a sequence of bytes to the specified address. The area of memory to be written may
+// be anywhere in the MegaDrive's 16MiB address-space. It must have an even start-address and
+// length. The MegaDrive must be suspended at the monitor.
+//
+static
 int umdkIndirectWriteBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
 	const char **error)
@@ -361,12 +651,17 @@ int umdkIndirectWriteBytes(
 	CHECK_STATUS(count&1, 3, cleanup, "umdkIndirectWriteBytes(): Count must be even!");
 
 	// Execute the write
-	status = umdkExecuteCommand(handle, CMD_WRITE, address, count, data, NULL, error);
+	status = umdkExecuteCommand(handle, CMD_WRITE, address, count, data, NULL, NULL, error);
 	CHECK_STATUS(status, status, cleanup);
 cleanup:
 	return retVal;
 }
 
+// Indirect-read a sequence of bytes from the specified address. The area of memory to be read may
+// be anywhere in the MegaDrive's 16MiB address-space. It must have an even start-address and
+// length. The MegaDrive must be suspended at the monitor.
+//
+static
 int umdkIndirectReadBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
 	const char **error)
@@ -384,7 +679,7 @@ int umdkIndirectReadBytes(
 		wordCount = 1 + count / 2;
 
 		// Execute the read
-		status = umdkExecuteCommand(handle, CMD_READ, address-1, 2*wordCount, NULL, tmpBuf, error);
+		status = umdkExecuteCommand(handle, CMD_READ, address-1, 2*wordCount, NULL, tmpBuf, NULL, error);
 		CHECK_STATUS(status, status, cleanup);
 		memcpy(data, tmpBuf+1, count);
 	} else {
@@ -392,16 +687,16 @@ int umdkIndirectReadBytes(
 		if ( count & 1 ) {
 			// Even address, odd count
 			tmpBuf = (uint8*)malloc(count);
-			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkDirectReadBytes(): Allocation error!");
+			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkIndirectReadBytes(): Allocation error!");
 			wordCount = 1 + count / 2;
 
 			// Execute the read
-			status = umdkExecuteCommand(handle, CMD_READ, address, 2*wordCount, NULL, tmpBuf, error);
+			status = umdkExecuteCommand(handle, CMD_READ, address, 2*wordCount, NULL, tmpBuf, NULL, error);
 			CHECK_STATUS(status, status, cleanup);
 			memcpy(data, tmpBuf, count);
 		} else {
 			// Even address, even count
-			status = umdkExecuteCommand(handle, CMD_READ, address, count, NULL, data, error);
+			status = umdkExecuteCommand(handle, CMD_READ, address, count, NULL, data, NULL, error);
 			CHECK_STATUS(status, status, cleanup);
 		}
 	}
@@ -410,114 +705,6 @@ cleanup:
 	return retVal;
 }
 
-int umdkStep(
-	struct FLContext *handle, struct Registers *regs, const char **error)
-{
-	int retVal = 0;
-	int status;
-	union RegUnion {
-		struct Registers reg;
-		uint32 longs[18];
-		uint8 bytes[18*4];
-	} *const u = (union RegUnion *)regs;
-	int i;
-
-	// Write monitor address to trace vector
-	status = umdkDirectWriteLong(handle, TR_VEC, MONITOR, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Execute step
-	status = umdkExecuteCommand(handle, CMD_STEP, 0, 0, NULL, NULL, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Read saved registers
-	status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
-	CHECK_STATUS(status, status, cleanup);
-	for ( i = 0; i < 18; i++ ) {
-		u->longs[i] = bigEndian32(u->longs[i]);
-	}
-cleanup:
-	return retVal;
-}
-
-int umdkCont(
-	struct FLContext *handle, struct Registers *regs, const char **error)
-{
-	int retVal = 0;
-	int status;
-	union RegUnion {
-		struct Registers reg;
-		uint32 longs[18];
-		uint8 bytes[18*4];
-	} *const u = (union RegUnion *)regs;
-	int i;
-
-	// Write monitor address to illegal instruction vector
-	status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
-	CHECK_STATUS(status, status, cleanup);
-		
-	// Execute cont
-	status = umdkExecuteCommand(handle, CMD_CONT, 0, 0, NULL, NULL, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Acquire monitor
-	status = umdkRemoteAcquire(handle, regs, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Read saved registers
-	status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
-	CHECK_STATUS(status, status, cleanup);
-	for ( i = 0; i < 18; i++ ) {
-		u->longs[i] = bigEndian32(u->longs[i]);
-	}
-cleanup:
-	return retVal;
-}
-
-int umdkWriteBytes(
-	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
-	const char **error)
-{
-	// GDB sometimes requests zero-length writes, which succeed trivially
-	if ( count == 0 ) {
-		return 0;
-	}
-
-	// Determine from the range whether to use a direct or indirect write
-	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
-		return umdkDirectWriteBytes(handle, address, count, data, error);
-	} else {
-		return umdkIndirectWriteBytes(handle, address, count, data, error);
-	}
-}
-
-int umdkReadBytes(
-	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
-	const char **error)
-{
-	// Determine from the range whether to use a direct or indirect read
-	if ( isInside(MONITOR, 0x80000, address, count) || isInside(0, 0x80000, address, count) ) {
-		return umdkDirectReadBytes(handle, address, count, data, error);
-	} else {
-		return umdkIndirectReadBytes(handle, address, count, data, error);
-	}
-}
-
-int umdkSetRegister(struct FLContext *handle, Register reg, uint32 value, const char **error) {
-	int retVal = 0;
-	int status = umdkDirectWriteLong(handle, CB_REGS+4*reg, value, error);
-	CHECK_STATUS(status, status, cleanup);
-cleanup:
-	return retVal;
-}
-
-int umdkGetRegister(struct FLContext *handle, Register reg, uint32 *value, const char **error) {
-	int retVal = 0;
-	int status = umdkDirectReadLong(handle, CB_REGS+4*reg, value, error);
-	CHECK_STATUS(status, status, cleanup);
-cleanup:
-	return retVal;
-}
 
 /*
   CODE TO INTERRUPT EXECUTION (USER PRESSES ESCAPE IN GDB)

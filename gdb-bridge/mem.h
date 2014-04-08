@@ -63,7 +63,20 @@ extern "C" {
 	#define CB_MEM   (MONITOR + 0x454)
 
 	// ---------------------------------------------------------------------------------------------
-	// Direct write operations
+	// Issuing commands
+	//
+	int umdkRemoteAcquire(
+		struct FLContext *handle, struct Registers *regs, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkExecuteCommand(
+		struct FLContext *handle, Command command, uint32 address, uint32 length,
+		const uint8 *sendData, uint8 *recvData, struct Registers *regs,
+		const char **error
+	) WARN_UNUSED_RESULT;
+
+	// ---------------------------------------------------------------------------------------------
+	// Direct read/write operations
 	//
 	int umdkDirectWriteFile(
 		struct FLContext *handle, uint32 address, const char *fileName, const char **error
@@ -82,9 +95,6 @@ extern "C" {
 		struct FLContext *handle, uint32 address, uint32 value, const char **error
 	) WARN_UNUSED_RESULT;
 
-	// ---------------------------------------------------------------------------------------------
-	// Direct read operations
-	//
 	int umdkDirectReadBytes(
 		struct FLContext *handle, uint32 address, uint32 count, uint8 *data,
 		const char **error
@@ -99,34 +109,6 @@ extern "C" {
 	) WARN_UNUSED_RESULT;
 
 	// ---------------------------------------------------------------------------------------------
-	// Issuing commands
-	//
-	int umdkRemoteAcquire(
-		struct FLContext *handle, struct Registers *regs, const char **error
-	) WARN_UNUSED_RESULT;
-
-	int umdkExecuteCommand(
-		struct FLContext *handle, Command command, uint32 address, uint32 length,
-		const uint8 *sendData, uint8 *recvData, const char **error
-	) WARN_UNUSED_RESULT;
-
-	// ---------------------------------------------------------------------------------------------
-	// Indirect write operations
-	//
-	int umdkIndirectWriteBytes(
-		struct FLContext *handle, uint32 address, uint32 count, const uint8 *data,
-		const char **error
-	) WARN_UNUSED_RESULT;
-
-	// ---------------------------------------------------------------------------------------------
-	// Indirect read operations
-	//
-	int umdkIndirectReadBytes(
-		struct FLContext *handle, uint32 address, uint32 count, uint8 *data,
-		const char **error
-	) WARN_UNUSED_RESULT;
-
-	// ---------------------------------------------------------------------------------------------
 	// Generic read/write operations (delegate to direct/indirect as needed)
 	//
 	int umdkWriteBytes(
@@ -134,9 +116,25 @@ extern "C" {
 		const char **error
 	) WARN_UNUSED_RESULT;
 
+	int umdkWriteWord(
+		struct FLContext *handle, uint32 address, uint16 value, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkWriteLong(
+		struct FLContext *handle, uint32 address, uint32 value, const char **error
+	) WARN_UNUSED_RESULT;
+
 	int umdkReadBytes(
 		struct FLContext *handle, uint32 address, uint32 count, uint8 *data,
 		const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkReadWord(
+		struct FLContext *handle, uint32 address, uint16 *pValue, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkReadLong(
+		struct FLContext *handle, uint32 address, uint32 *pValue, const char **error
 	) WARN_UNUSED_RESULT;
 
 	// ---------------------------------------------------------------------------------------------
@@ -156,6 +154,7 @@ extern "C" {
 	int umdkSetRegister(
 		struct FLContext *handle, Register reg, uint32 value, const char **error
 	) WARN_UNUSED_RESULT;
+
 	int umdkGetRegister(
 		struct FLContext *handle, Register reg, uint32 *value, const char **error
 	) WARN_UNUSED_RESULT;

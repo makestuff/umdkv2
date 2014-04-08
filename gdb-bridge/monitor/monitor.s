@@ -48,7 +48,7 @@ main:
 	move.w	#0x0000, srSave
 	move.w	0(sp), srSave+2
 	and.w	#0x7FFF, srSave+2	| clear TRACE bit
-	move.w	#1, cmdFlag		| tell host we're ready to accept commands
+	move.w	#1, cmdFlag		| tell host we're ready to accept commands (comment out for tracing a command)
 	
 commandLoop:
 	cmp.w	#2, cmdFlag		| see if host has left us...
