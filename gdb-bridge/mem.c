@@ -4,6 +4,7 @@
 #include <liberror.h>
 #include "range.h"
 #include "mem.h"
+#include "escape.h"
 
 // Forward-declare local functions
 static void prepMemCtrlCmd(uint8 cmd, uint32 addr, uint8 *buf);
@@ -475,12 +476,35 @@ int umdkRemoteAcquire(
 		uint32 longs[18];
 		uint8 bytes[18*4];
 	} *const u = (union RegUnion *)regs;
+	uint32 vbAddr;
+	uint16 oldOp;
 
-	// Wait for monitor
-	do {
-		status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
+	// See if we're in the monitor already
+	status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
+	CHECK_STATUS(status, status, cleanup);
+	if ( cmdFlag != CF_READY ) {
+		// Read address of VDP vertical interrupt vector
+		status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
 		CHECK_STATUS(status, status, cleanup);
-	} while ( cmdFlag != CF_READY );
+		
+		// Read opcode at vbAddr
+		status = umdkDirectReadWord(handle, vbAddr, &oldOp, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Wait for monitor
+		do {
+			if ( isInterrupted() ) {
+				status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, error);
+				CHECK_STATUS(status, status, cleanup);
+			}
+			status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
+			CHECK_STATUS(status, status, cleanup);
+		} while ( cmdFlag != CF_READY );
+		
+		// Restore old opcode back at vbAddr
+		status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
+		CHECK_STATUS(status, status, cleanup);
+	}
 
 	// Read saved registers, if necessary
 	if ( regs ) {

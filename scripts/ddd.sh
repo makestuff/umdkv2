@@ -15,8 +15,9 @@ elif [ $# = 2 ]; then
 	echo "tbreak main" >> /tmp/ddd.cmd
 	echo "set radix 16" >> /tmp/ddd.cmd
 	echo "cont" >> /tmp/ddd.cmd
-	echo "RUN WITH: run -geometry 827x660+600+830 --debugger /usr/local/bin/m68k-elf-gdb -x /tmp/ddd.cmd $2"
-	gdb /usr/local/bin/ddd
+	/usr/local/bin/ddd -geometry 827x660+600+830 --debugger /usr/local/bin/m68k-elf-gdb -x /tmp/ddd.cmd $2
+	#echo "RUN WITH: run -geometry 827x660+600+830 --debugger /usr/local/bin/m68k-elf-gdb -x /tmp/ddd.cmd $2"
+	#gdb /usr/local/bin/ddd
 else
 	echo "Synopsis: ddd.sh <port> [<elfFile>]"
 fi

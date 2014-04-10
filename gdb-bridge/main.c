@@ -11,6 +11,7 @@
 #include <libfpgalink.h>
 #include <liberror.h>
 #include "remote.h"
+#include "escape.h"
 
 static int readMessage(int conn, char *buf, int bufSize) {
 	char *ptr = buf;
@@ -126,6 +127,7 @@ int main(int argc, char *argv[]) {
 		}
 		u.ip4 = clientAddress.sin_addr.s_addr;
 		printf("Got GDB connection from %d.%d.%d.%d:%d\n", u.ip[0], u.ip[1], u.ip[2], u.ip[3], clientAddress.sin_port);
+		setConnection(conn);
 		handleConnection(conn, handle);
 		printf("GDB disconnected\n");
 	}
