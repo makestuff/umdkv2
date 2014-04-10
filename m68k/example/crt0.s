@@ -115,7 +115,28 @@ start:
 	move.l	#0x53454741, 0xa14000	| write "SEGA" to TMSS register
 
 noTMSS:
-	move.w	#0, sp			| set stack pointer
+	move.l	#0x3FFF, d0
+	move.l	#0xCCCCCCCC, d1
+	lea	0xFF0000, a0
+ccMem:
+	move.l	d1, (a0)+
+	dbra	d0, ccMem
+	moveq	#0, d0
+	moveq	#0, d1
+	moveq	#0, d2
+	moveq	#0, d3
+	moveq	#0, d4
+	moveq	#0, d5
+	moveq	#0, d6
+	moveq	#0, d7
+	suba.l	a0, a0
+	suba.l	a1, a1
+	suba.l	a2, a2
+	suba.l	a3, a3
+	suba.l	a4, a4
+	suba.l	a5, a5
+	suba.l	fp, fp
+	suba.l	sp, sp			| set stack pointer = 0
 	move.w	#0x2300, sr		| switch to user mode
 	jmp	main			| start main(), which must not return
 	

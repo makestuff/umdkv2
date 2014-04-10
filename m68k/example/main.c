@@ -1,5 +1,6 @@
 unsigned short vtimer;
 unsigned short htimer;
+unsigned short p[8];
 
 void save_it(unsigned short x);
 unsigned short calc1(unsigned short x);
@@ -8,7 +9,6 @@ unsigned short my_func(unsigned short x, unsigned short y, unsigned short z);
 int main(void) {
 	unsigned short i;
 	unsigned short x;
-	unsigned short *const p = (unsigned short *)0xFF0000;
 	p[0] = 0x0023;
 	p[1] = 0xCAFE;
 	p[2] = 0xBABE;
