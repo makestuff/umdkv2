@@ -20,13 +20,6 @@ static const char hexDigits[] = {
 	'8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
 };
 
-// The register names, used for debugging
-static const char *regNames[] = {
-	"D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
-	"A0", "A1", "A2", "A3", "A4", "A5", "FP", "SP",
-	"SR", "PC"
-};
-
 // GDB remote protocol standard responses:
 #define RESPONSE_OK    "+$OK#9A"
 #define RESPONSE_EMPTY "+$#00"
@@ -104,11 +97,8 @@ static int cmdWriteRegister(const char *cmd, int conn, struct FLContext *handle)
 	if ( reg < 18 ) {
 		cmd = end + 1;
 		val = strtoul(cmd, NULL, 16);
-		printf("cmdWriteRegister(%s, 0x%08X)\n", regNames[reg], val);
 		status = umdkSetRegister(handle, reg, val, &g_error);
 		CHKERR(status);
-	} else {
-		printf("cmdWriteRegister(?)\n");
 	}
 	return write(conn, VL(RESPONSE_OK));
 }
@@ -122,7 +112,6 @@ static int cmdReadRegister(const char *cmd, int conn, struct FLContext *handle) 
 	if ( reg < 18 ) {
 		status = umdkGetRegister(handle, reg, &val, &g_error);
 		CHKERR(status);
-		printf("cmdReadRegister(%s) = 0x%08X)\n", regNames[reg], val);
 		sprintf(response, "+$%08X#", val);
 		checksum(response + 2);
 		return write(conn, response, 13);
@@ -137,12 +126,6 @@ static int cmdReadRegisters(int conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkRemoteAcquire(handle, &regs, &g_error);
 	CHKERR(status);
-	printf(
-		"cmdReadRegisters() = {\n\t0x%08X, 0x%08X, 0x%08X, 0x%08X,  0x%08X, 0x%08X, 0x%08X, 0x%08X,\n\t0x%08X, 0x%08X, 0x%08X, 0x%08X,  0x%08X, 0x%08X, 0x%08X, 0x%08X,\n\t0x%08X, 0x%08X\n}\n",
-		regs.d0, regs.d1, regs.d2, regs.d3, regs.d4, regs.d5, regs.d6, regs.d7,
-		regs.a0, regs.a1, regs.a2, regs.a3, regs.a4, regs.a5, regs.fp, regs.sp,
-		regs.sr, regs.pc
-	);
 	sprintf(
 		response, "+$%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X%08X#",
 		regs.d0, regs.d1, regs.d2, regs.d3, regs.d4, regs.d5, regs.d6, regs.d7,
@@ -171,10 +154,10 @@ static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 		}
 		*binary++ = byte;
 	}
+	address &= 0x00FFFFFF;
 	if ( address & 1 || length & 1 ) {
 		printf("Nonaligned write: %du bytes to 0x%08X\n", length, address);
 	}
-	printf("cmdWriteMemory(0x%08X, 0x%08X)\n", address, length);
 	status = umdkWriteBytes(handle, address, length, ioBuf, &g_error);
 	CHKERR(status);
 	return write(conn, VL(RESPONSE_OK));
@@ -192,10 +175,7 @@ static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
 	if ( parseList(cmd, NULL, &address, ',', &length, '\0', NULL) ) {
 		return -8;
 	}
-	if ( address & 1 || length & 1 ) {
-		printf("Nonaligned read: %du bytes from 0x%08X\n", length, address);
-	}
-	printf("cmdReadMemory(0x%08X, 0x%08X)\n", address, length);
+	address &= 0x00FFFFFF;
 	status = umdkReadBytes(handle, address, length, ioBuf, &g_error);
 	CHKERR(status);
 	binPtr = ioBuf;
@@ -250,7 +230,6 @@ static int cmdCreateBreakpoint(const char *cmd, int conn, struct FLContext *hand
 	CHKERR(status);
 	status = umdkWriteWord(handle, addr, ILLEGAL, &g_error);
 	CHKERR(status);
-	printf("cmdCreateBreakpoint(0x%08X)\n", addr);
 	return write(conn, VL(RESPONSE_OK));
 }
 
@@ -270,12 +249,10 @@ static int cmdDeleteBreakpoint(const char *cmd, int conn, struct FLContext *hand
 		if ( breakpoints[i].addr == addr ) {
 			status = umdkWriteWord(handle, addr, breakpoints[i].save, &g_error);
 			CHKERR(status);
-			printf("cmdDeleteBreakpoint(0x%08X) = OK!\n", addr);
 			breakpoints[i].addr = 0x00000000;
 			return write(conn, VL(RESPONSE_OK));
 		}
 	}
-	printf("cmdDeleteBreakpoint(0x%08X) = FAIL!\n", addr);
 	return -3;
 }
 
@@ -284,7 +261,6 @@ static int cmdStep(int conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkStep(handle, &regs, &g_error);
 	CHKERR(status);
-	printf("cmdStep(PC=0x%08X)\n", regs.pc);
 	return write(conn, VL(RESPONSE_SIG));
 }
 
@@ -293,7 +269,6 @@ static int cmdContinue(int conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkCont(handle, &regs, &g_error);
 	CHKERR(status);
-	printf("cmdContinue(PC=0x%08X)\n", regs.pc);
 	return write(conn, VL(RESPONSE_SIG));
 }
 
