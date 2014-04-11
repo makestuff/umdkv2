@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <libfpgalink.h>
@@ -677,16 +678,123 @@ cleanup:
 int umdkCont(
 	struct FLContext *handle, struct Registers *regs, const char **error)
 {
-	int retVal = 0;
-	int status;
+	int retVal = 0, status, i;
+	uint8 tmpData[16400];
+	size_t scrapSize;
+	uint32 vbAddr, actualLength;
+	uint16 oldOp;
+	union RegUnion {
+		struct Registers reg;
+		uint32 longs[18];
+		uint8 bytes[18*4];
+	} *const u = (union RegUnion *)regs;
+	const uint8 *recvData;
+	FILE *file = fopen("trace.log", "wb");
+	CHECK_STATUS(!file, 13, cleanup, "umdkCont(): Unable to open trace.log for writing!");
+
+	// Get address of VDP vertical interrupt routine and its first opcode
+	status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
+	CHECK_STATUS(status, status, cleanup);
+	status = umdkDirectReadWord(handle, vbAddr, &oldOp, error);
+	CHECK_STATUS(status, status, cleanup);
 
 	// Write monitor address to illegal instruction vector
 	status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
 	CHECK_STATUS(status, status, cleanup);
+
+	// Disable tracing (if any) & clear junk from trace FIFO
+	tmpData[0] = 0x00;
+	status = flWriteChannel(handle, 0x01, 1, tmpData, error);
+	CHECK_STATUS(status, 25, cleanup);
+	status = flReadChannel(handle, 0x03, 1, tmpData, error);
+	CHECK_STATUS(status, 20, cleanup);
+	scrapSize = tmpData[0] << 8;
+	status = flReadChannel(handle, 0x04, 1, tmpData, error);
+	CHECK_STATUS(status, 20, cleanup);
+	scrapSize |= tmpData[0];
+	while ( scrapSize ) {
+		// Clear junk from FIFO
+		status = flReadChannel(handle, 0x02, scrapSize, tmpData, error);
+		CHECK_STATUS(status, 20, cleanup);
 		
-	// Execute continue
-	status = umdkExecuteCommand(handle, CMD_CONT, 0, 0, NULL, NULL, regs, error);
+		// Verify no junk remaining
+		status = flReadChannel(handle, 0x03, 1, tmpData, error);
+		CHECK_STATUS(status, 20, cleanup);
+		scrapSize = tmpData[0] << 8;
+		status = flReadChannel(handle, 0x04, 1, tmpData, error);
+		CHECK_STATUS(status, 20, cleanup);
+		scrapSize |= tmpData[0];
+	}
+	
+	// Enable tracing
+	tmpData[0] = 0x02;
+	status = flWriteChannelAsync(handle, 0x01, 1, tmpData, error);
+	CHECK_STATUS(status, 25, cleanup);
+	
+	// Set up the continue command and execute it
+	status = umdkDirectWriteWord(handle, CB_INDEX, CMD_CONT, error);
 	CHECK_STATUS(status, status, cleanup);
+	status = umdkDirectWriteWord(handle, CB_FLAG, CF_CMD, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Submit 1st read for some trace data
+	status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
+	CHECK_STATUS(status, 28, cleanup);
+
+	// Submit 1st read for the command status flag
+	status = umdkDirectReadBytesAsync(handle, CB_FLAG, 2, error);
+	CHECK_STATUS(status, status, cleanup);
+	do {
+		// If interrupted (escape or ctrl-c in gdb), induce a suspend at the next vblank
+		if ( isInterrupted() ) {
+			status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, error);
+			CHECK_STATUS(status, status, cleanup);
+		}
+
+		// Submit a read for some trace data
+		status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
+		CHECK_STATUS(status, 28, cleanup);
+
+		// Submit a read for the command status flag
+		status = umdkDirectReadBytesAsync(handle, CB_FLAG, 2, error);
+		CHECK_STATUS(status, status, cleanup);
+
+		// Await the requested trace data
+		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+		CHECK_STATUS(status, status, cleanup);
+
+		// Write it to the trace-log
+		fwrite(recvData, 1, actualLength, file);
+
+		// Await the requested command status flag
+		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+		CHECK_STATUS(status, status, cleanup);
+	} while ( recvData[0] != 0x00 || recvData[1] != CF_READY );
+
+	// Await the final block of trace-data
+	status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Write it to the trace-log
+	fwrite(recvData, 1, actualLength, file);
+	fclose(file);
+	
+	// Await the final command-flag
+	status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Restore old opcode to vbAddr
+	status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Read saved registers, if necessary
+	if ( regs ) {
+		status = umdkDirectReadBytes(handle, CB_REGS, 18*4, u->bytes, error);
+		CHECK_STATUS(status, status, cleanup);
+		for ( i = 0; i < 18; i++ ) {
+			u->longs[i] = bigEndian32(u->longs[i]);
+		}
+	}
 cleanup:
 	return retVal;
 }
