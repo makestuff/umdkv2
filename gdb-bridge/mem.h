@@ -100,6 +100,10 @@ extern "C" {
 		const char **error
 	) WARN_UNUSED_RESULT;
 
+	int umdkDirectReadBytesAsync(
+		struct FLContext *handle, uint32 address, uint32 count, const char **error
+	) WARN_UNUSED_RESULT;
+
 	int umdkDirectReadWord(
 		struct FLContext *handle, uint32 address, uint16 *pValue, const char **error
 	) WARN_UNUSED_RESULT;

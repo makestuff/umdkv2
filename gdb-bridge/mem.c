@@ -176,10 +176,10 @@ cleanup:
 	return retVal;
 }
 
-// Direct-read a sequence of bytes from the specified address. The area of memory to be read must
-// reside entirely within one of the two direct-readable memory areas (0x000000-0x07FFFF and
-// 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively). It need not have an even start
-// address or length. The MegaDrive need not be suspended at the monitor.
+// Synchronously direct-read a sequence of bytes from the specified address. The area of memory to
+// be read must reside entirely within one of the two direct-readable memory areas
+// (0x000000-0x07FFFF and 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively). It need
+// not have an even start address or length. The MegaDrive need not be suspended at the monitor.
 //
 int umdkDirectReadBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, uint8 *const data,
@@ -271,6 +271,58 @@ int umdkDirectReadBytes(
 	}
 cleanup:
 	free(tmpBuf);
+	return retVal;
+}
+
+// Asynchronously direct-read a sequence of bytes from the specified address. The area of memory to
+// be read must reside entirely within one of the two direct-readable memory areas
+// (0x000000-0x07FFFF and 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively). Unlike
+// umdkDirectReadBytes(), this function must be given an even start address and count. The
+// MegaDrive need not be suspended at the monitor. This does an asynchronous read, so each call to
+// this function must match a later call to FPGALink's flReadChannelAsyncAwait(), to retrieve the
+// actual data.
+//
+int umdkDirectReadBytesAsync(
+	struct FLContext *handle, uint32 address, const uint32 count, const char **error)
+{
+	int retVal = 0;
+	FLStatus status;
+	uint8 command[8];
+
+	// First verify the read is in a legal range
+	if ( isInside(MONITOR, 0x80000, address, count) ) {
+		// Read is from the UMDKv2-reserved 512KiB of address-space at 0x400000. The mapping for this
+		// is fixed to the top 512KiB of SDRAM, so we need to transpose the MD virtual address to
+		// get the correct SDRAM physical address.
+		address += 0xb80000;
+	} else if ( !isInside(0, 0x80000, address, count) ) {
+		// The only other region of the address-space which is directly host-addressable is the
+		// bottom 512KiB of address-space, which has a logical-physical mapping that is guaranteed
+		// by SEGA to be 1:1 (i.e no transpose necessary). So any attempt to directly access memory
+		// anywhere else is an error.
+		CHECK_STATUS(
+			true, 1, cleanup,
+			"umdkDirectReadBytesAsync(): Illegal direct-read from 0x%06X-0x%06X range!",
+			address, address+count-1
+		);
+	}
+
+	// Next verify that the read is to an even address, and has even length
+	CHECK_STATUS(address&1, 2, cleanup, "umdkDirectReadBytesAsync(): Address must be even!");
+	CHECK_STATUS(count&1, 3, cleanup, "umdkDirectReadBytesAsync(): Count must be even!");
+
+	// Prepare the read command
+	prepMemCtrlCmd(0x00, address/2, command);
+	prepMemCtrlCmd(0x40, count/2, command+4);
+	
+	// Send the read request
+	status = flWriteChannelAsync(handle, 0x00, 8, command, error);
+	CHECK_STATUS(status, 8, cleanup);
+	
+	// Submit the read
+	status = flReadChannelAsyncSubmit(handle, 0x00, count, NULL, error);
+	CHECK_STATUS(status, 9, cleanup);
+cleanup:
 	return retVal;
 }
 
