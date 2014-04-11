@@ -14,6 +14,6 @@ all: boot.bin monitor.bin test.bin
 	$(TOOLS)-as $(AS_FLAGS) -o $@ $<
 
 clean: FORCE
-	rm -f *.o *.elf *.bin monitor.c
+	rm -f *.o *.elf *.bin
 
 FORCE:
