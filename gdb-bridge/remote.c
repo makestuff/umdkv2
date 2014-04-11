@@ -280,11 +280,33 @@ int processMessage(const char *buf, int size, int conn, struct FLContext *handle
 	int status;
 	struct Registers regs;
 	while ( buf < end && (ch == '$' || ch == '+' || ch == 0x03) ) {
+		uint32 vbAddr;
+		uint16 oldOp;
 		if ( ch == 0x03 ) {
 			printf("GDB gave the interrupt signal!\n");
+			
+			// Read address of VDP vertical interrupt vector & read 1st opcode
+			status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, &g_error);
+			CHKERR(status);
+			status = umdkDirectReadWord(handle, vbAddr, &oldOp, &g_error);
+			CHKERR(status);
+			printf("vbAddr = 0x%06X, opCode = 0x%04X\n", vbAddr, oldOp);
+			
+			// Replace illegal instruction vector
+			status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, &g_error);
+			CHKERR(status);
+			
+			// Write illegal instruction opcode
+			status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, &g_error);
+			CHKERR(status);
+			
+			// Acquire the monitor
 			status = umdkRemoteAcquire(handle, &regs, &g_error);
 			CHKERR(status);
-			//returnCode = write(conn, VL(RESPONSE_SIG));
+			
+			// Restore old opcode to vbAddr
+			status = umdkDirectWriteWord(handle, vbAddr, oldOp, &g_error);
+			CHKERR(status);
 		}
 		ch = *++buf;
 	}

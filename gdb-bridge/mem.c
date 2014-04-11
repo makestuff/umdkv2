@@ -529,35 +529,10 @@ int umdkRemoteAcquire(
 		uint32 longs[18];
 		uint8 bytes[18*4];
 	} *const u = (union RegUnion *)regs;
-	uint32 vbAddr;
-	uint16 oldOp;
-
-	// See if we're in the monitor already
-	status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
-	CHECK_STATUS(status, status, cleanup);
-	if ( cmdFlag != CF_READY ) {
-		// Read address of VDP vertical interrupt vector
-		status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
+	do {
+		status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
 		CHECK_STATUS(status, status, cleanup);
-		
-		// Read opcode at vbAddr
-		status = umdkDirectReadWord(handle, vbAddr, &oldOp, error);
-		CHECK_STATUS(status, status, cleanup);
-		
-		// Wait for monitor
-		do {
-			if ( isInterrupted() ) {
-				status = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, error);
-				CHECK_STATUS(status, status, cleanup);
-			}
-			status = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, error);
-			CHECK_STATUS(status, status, cleanup);
-		} while ( cmdFlag != CF_READY );
-		
-		// Restore old opcode back at vbAddr
-		status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);
-		CHECK_STATUS(status, status, cleanup);
-	}
+	} while ( cmdFlag != CF_READY );
 
 	// Read saved registers, if necessary
 	if ( regs ) {
@@ -679,7 +654,7 @@ int umdkCont(
 	struct FLContext *handle, struct Registers *regs, const char **error)
 {
 	int retVal = 0, status, i;
-	uint8 tmpData[16400];
+	uint8 tmpData[65536];
 	size_t scrapSize;
 	uint32 vbAddr, actualLength;
 	uint16 oldOp;
@@ -689,7 +664,21 @@ int umdkCont(
 		uint8 bytes[18*4];
 	} *const u = (union RegUnion *)regs;
 	const uint8 *recvData;
-	FILE *file = fopen("trace.log", "wb");
+	FILE *file = NULL;
+
+	// Read RAM
+	status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Save it
+	file = fopen("ramBefore.bin", "wb");
+	CHECK_STATUS(!file, 13, cleanup, "umdkCont(): Unable to open ramBefore.bin for writing!");
+	fwrite(tmpData, 1, 65536, file);
+	fclose(file);
+	file = NULL;
+
+	// Open trace log
+	file = fopen("trace.log", "wb");
 	CHECK_STATUS(!file, 13, cleanup, "umdkCont(): Unable to open trace.log for writing!");
 
 	// Get address of VDP vertical interrupt routine and its first opcode
@@ -778,6 +767,7 @@ int umdkCont(
 	// Write it to the trace-log
 	fwrite(recvData, 1, actualLength, file);
 	fclose(file);
+	file = NULL;
 	
 	// Await the final command-flag
 	status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
@@ -795,7 +785,22 @@ int umdkCont(
 			u->longs[i] = bigEndian32(u->longs[i]);
 		}
 	}
+
+	// Read RAM
+	status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Save it
+	file = fopen("ramAfter.bin", "wb");
+	CHECK_STATUS(!file, 13, cleanup, "umdkCont(): Unable to open ramAfter.bin for writing!");
+	fwrite(tmpData, 1, 65536, file);
+	fclose(file);
+	file = NULL;
+
 cleanup:
+	if ( file ) {
+		fclose(file);
+	}
 	return retVal;
 }
 

@@ -35,7 +35,7 @@ int main(int argc, const char *argv[]) {
 	uint8 *readBuf = NULL;
 	const char *vp = "1d50:602b", *ivp = NULL, *progConfig = NULL;
 	const char *const prog = argv[0];
-	uint8 command[8];
+	uint8 command[10];
 	const char *execCtrl = NULL, *execTrace = NULL;
 	const char *rdFile = NULL, *wrFile = NULL, *cmpFile = NULL;
 	size_t fileNameLength;
@@ -196,13 +196,13 @@ int main(int argc, const char *argv[]) {
 		numWords = numBytes / 2;
 		address = address / 2;
 
+		// Now send actual data
 		command[0] = 0x00; // set mem-pipe pointer
 		command[3] = (uint8)address;
 		address >>= 8;
 		command[2] = (uint8)address;
 		address >>= 8;
 		command[1] = (uint8)address;
-		
 		command[4] = 0x80; // write words to SDRAM
 		command[7] = (uint8)numWords;
 		numWords >>= 8;
@@ -393,6 +393,23 @@ int main(int argc, const char *argv[]) {
 	}
 
 	if ( execCtrl && execCtrl[0] != '0' ) {
+		// Write CF_RUNNING (0x0000) to CB_FLAG, to show that MD is running
+		uint32 flagAddr = 0xF80400/2;
+		command[0] = 0x00; // set mem-pipe pointer
+		command[3] = (uint8)flagAddr;
+		flagAddr >>= 8;
+		command[2] = (uint8)flagAddr;
+		flagAddr >>= 8;
+		command[1] = (uint8)flagAddr;
+		command[4] = 0x80; // write words to SDRAM
+		command[5] = 0x00;
+		command[6] = 0x00;
+		command[7] = 0x01; // one 16-bit word
+		command[8] = 0x00; // CF_RUNNING
+		command[9] = 0x00;
+		status = flWriteChannelAsync(handle, 0x00, 10, command, &error);
+		CHECK_STATUS(status, 23, cleanup);
+
 		printf("Releasing MD from reset...\n");
 		byte = 0x00;
 		status = flWriteChannelAsync(handle, 0x01, 1, &byte, &error);
