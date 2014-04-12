@@ -25,7 +25,7 @@ entity umdkv2 is
 		clk_in         : in  std_logic;
 		reset_in       : in  std_logic;
 
-		-- DVR interface -----------------------------------------------------------------------------
+		-- DVR interface ---------------------------------------------------------------------------
 		chanAddr_in    : in  std_logic_vector(6 downto 0);  -- the selected channel (0-127)
 
 		-- Host >> FPGA pipe:
@@ -38,7 +38,7 @@ entity umdkv2 is
 		f2hValid_out   : out std_logic;                     -- channel logic can drive this low to say "I don't have data ready for you"
 		f2hReady_in    : in  std_logic;                     -- '1' means "on the next clock rising edge, put your next byte of data on f2hData"
 
-		-- SDRAM interface ---------------------------------------------------------------------------
+		-- SDRAM interface -------------------------------------------------------------------------
 		ramCmd_out     : out   std_logic_vector(2 downto 0);
 		ramBank_out    : out   std_logic_vector(1 downto 0);
 		ramAddr_out    : out   std_logic_vector(11 downto 0);
@@ -46,7 +46,7 @@ entity umdkv2 is
 		ramLDQM_out    : out   std_logic;
 		ramUDQM_out    : out   std_logic;
 
-		-- MegaDrive interface -----------------------------------------------------------------------
+		-- MegaDrive interface ---------------------------------------------------------------------
 		mdReset_out    : out   std_logic;
 		mdDriveBus_out : out   std_logic;
 		mdDTACK_out    : out   std_logic;
@@ -55,7 +55,13 @@ entity umdkv2 is
 		mdOE_in        : in    std_logic;
 		mdAS_in        : in    std_logic;
 		mdLDSW_in      : in    std_logic;
-		mdUDSW_in      : in    std_logic
+		mdUDSW_in      : in    std_logic;
+
+		-- SPI bus ---------------------------------------------------------------------------------
+		spiClk_out     : out   std_logic;
+		spiData_out    : out   std_logic;
+		spiData_in     : in    std_logic;
+		spiCS_out      : out   std_logic_vector(1 downto 0)
 	);
 end entity;
 
@@ -108,8 +114,8 @@ architecture structural of umdkv2 is
 	signal mcRDV      : std_logic;
 
 	-- Registers implementing the channels
-	signal reg1       : std_logic_vector(1 downto 0) := "01";
-	signal reg1_next  : std_logic_vector(1 downto 0);
+	signal reg1       : std_logic_vector(5 downto 0) := "000001";
+	signal reg1_next  : std_logic_vector(5 downto 0);
 
 	-- Trace data
 	--signal count      : unsigned(31 downto 0) := (others => '0');
@@ -127,13 +133,20 @@ architecture structural of umdkv2 is
 	
 	-- Readable versions of external driven signals
 	signal mdReset    : std_logic;
+
+	-- Bits in the config register reg1
+	constant RESET    : integer := 0;
+	constant TRACE    : integer := 1;
+	constant TURBO    : integer := 2;
+	constant SUPPRESS : integer := 3;
+	constant CHIPSEL  : integer := 4;
 begin
 	-- Infer registers
 	process(clk_in)
 	begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
-				reg1 <= "01";
+				reg1 <= "000001";
 				--count <= (others => '0');
 			else
 				reg1 <= reg1_next;
@@ -145,7 +158,7 @@ begin
 	-- Select values to return for each channel when the host is reading
 	with chanAddr_in select f2hData_out <=
 		rspData                     when "0000000",
-		"000000" & reg1             when "0000001",
+		"00" & reg1                 when "0000001",
 		trcData                     when "0000010",
 		"0" & trcDepth(14 downto 8) when "0000011",
 		trcDepth(7 downto 0)        when "0000100",
@@ -182,20 +195,49 @@ begin
 	-- Trace FIFO
 	trace_fifo: entity work.trace_fifo_wrapper
 		port map(
-			clk_in      => clk_in,
-			depth_out   => trcDepth,
+			clk_in          => clk_in,
+			depth_out       => trcDepth,
 			
 			-- Production end
-			inputData_in => trc8Data,
-			inputValid_in => trc8Valid,
-			inputReady_out => trc8Ready,
+			inputData_in    => trc8Data,
+			inputValid_in   => trc8Valid,
+			inputReady_out  => trc8Ready,
 
 			-- Consumption end
-			outputData_out => trcData,
+			outputData_out  => trcData,
 			outputValid_out => trcValid,
-			outputReady_in => trcReady
+			outputReady_in  => trcReady
 		);
 
+	-- SPI master
+	spi_master : entity work.spi_master
+		generic map(
+			SLOW_COUNT => "111011",  -- spiClk = sysClk/120 (400kHz @48MHz)
+			FAST_COUNT => "000000",  -- spiClk = sysClk/2 (24MHz @48MHz)
+			BIT_ORDER  => '1'        -- MSB first
+		)
+		port map(
+			reset_in      => '0',
+			clk_in        => clk_in,
+			
+			-- Send pipe
+			turbo_in      => reg1(TURBO),
+			suppress_in   => reg1(SUPPRESS),
+			sendData_in   => (others => 'X'), --sendData,
+			sendValid_in  => '0',             -- sendValid,
+			sendReady_out => open,            -- sendReady,
+			
+			-- Receive pipe
+			recvData_out  => open,            -- recvData,
+			recvValid_out => open,            -- recvValid,
+			recvReady_in  => '0',             -- recvReady,
+			
+			-- SPI interface
+			spiClk_out    => spiClk_out,
+			spiData_out   => spiData_out,
+			spiData_in    => spiData_in
+		);
+	
 	-- Command Pipe FIFO
 	cmd_fifo: entity work.fifo
 		generic map(
@@ -326,7 +368,7 @@ begin
 			mdUDSW_in      => mdUDSW_in,
 
 			-- Trace pipe
-			traceEnable_in => reg1(1),
+			traceEnable_in => reg1(TRACE),
 			traceData_out  => trc72Data,
 			traceValid_out => trc72Valid
 			--traceData_out  => open, --trc72Data,
@@ -363,7 +405,7 @@ begin
 		);
 
 	reg1_next <=
-		h2fData_in(1 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
+		h2fData_in(5 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
 		else reg1;
 
 	-- Connect channel 0 writes to the SDRAM command pipe and response pipe ready to ch0 read ready
@@ -384,6 +426,9 @@ begin
 		'0'      when others;
 
 	-- Drive MegaDrive RESET line
-	mdReset     <= reg1(0);  -- MD in reset when R1(0) high
+	mdReset     <= reg1(RESET);  -- MD in reset when R1(0) high
 	mdReset_out <= mdReset;
+
+	-- Drive SPI chip-select lines
+	spiCS_out <= not reg1(CHIPSEL+1 downto CHIPSEL);
 end architecture;

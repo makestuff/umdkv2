@@ -55,7 +55,13 @@ entity top_level is
 		mdOE_in        : in    std_logic;
 		mdAS_in        : in    std_logic;
 		mdLDSW_in      : in    std_logic;
-		mdUDSW_in      : in    std_logic
+		mdUDSW_in      : in    std_logic;
+		
+		-- SPI bus ---------------------------------------------------------------------------------
+		spiClk_out     : out   std_logic;
+		spiData_out    : out   std_logic;
+		spiData_in     : in    std_logic;
+		spiCS_out      : out   std_logic_vector(1 downto 0)
 	);
 end entity;
 
@@ -138,7 +144,13 @@ begin
 			mdOE_in        => mdOE_in,
 			mdAS_in        => mdAS_in,
 			mdLDSW_in      => mdLDSW_in,
-			mdUDSW_in      => mdUDSW_in
+			mdUDSW_in      => mdUDSW_in,
+
+			-- SPI bus
+			spiClk_out     => spiClk_out,
+			spiData_out    => spiData_out,
+			spiData_in     => spiData_in,
+			spiCS_out      => spiCS_out
 		);
 
 	-- Generate the system clock from the FX2LP's 48MHz clock

@@ -136,6 +136,15 @@ NET "mdData_io<14>"   TNM="mio_grp" | LOC="P26"  | IOSTANDARD=LVTTL;
 NET "mdData_io<15>"   TNM="mio_grp" | LOC="P23"  | IOSTANDARD=LVTTL;
 
 #===============================================================================
+# SPI interface
+#===============================================================================
+NET "spiCS_out<0>"    LOC="P38"  | IOSTANDARD=LVTTL;
+NET "spiCS_out<1>"    LOC="P45"  | IOSTANDARD=LVTTL;
+NET "spiData_out"     LOC="P64"  | IOSTANDARD=LVTTL;
+NET "spiClk_out"      LOC="P70"  | IOSTANDARD=LVTTL;
+NET "spiData_in"      LOC="P65"  | IOSTANDARD=LVTTL;
+
+#===============================================================================
 # Timing constraint of FX2 48MHz clock "fx2Clk_in"
 #===============================================================================
 TIMESPEC "TS_clk" = PERIOD "fx2Clk_grp" 20.833 ns HIGH 50 %;
