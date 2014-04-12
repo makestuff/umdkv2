@@ -80,6 +80,11 @@ architecture behavioural of mem_arbiter_tb is
 	signal traceEnable : std_logic;
 	signal traceData   : std_logic_vector(71 downto 0);
 	signal traceValid  : std_logic;
+
+ -- MegaDrive registers
+	signal regAddr     : std_logic_vector(2 downto 0);
+	signal regData     : std_logic_vector(15 downto 0);
+	signal regValid    : std_logic;
 begin
 	-- Instantiate the memory pipe
 	mem_pipe: entity work.mem_pipe
@@ -141,7 +146,12 @@ begin
 			-- Trace pipe
 			traceEnable_in => traceEnable,
 			traceData_out  => traceData,
-			traceValid_out => traceValid
+			traceValid_out => traceValid,
+
+			-- MegaDrive registers
+			regAddr_out    => regAddr,
+			regData_out    => regData,
+			regValid_out   => regValid
 		);
 
 	-- Instantiate the memory controller

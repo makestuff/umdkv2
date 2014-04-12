@@ -56,7 +56,12 @@ entity mem_arbiter is
 		-- Trace pipe
 		traceEnable_in : in  std_logic;
 		traceData_out  : out std_logic_vector(71 downto 0);
-		traceValid_out : out std_logic
+		traceValid_out : out std_logic;
+
+		-- MegaDrive registers
+		regAddr_out    : out std_logic_vector(2 downto 0);
+		regData_out    : out std_logic_vector(15 downto 0);
+		regValid_out   : out std_logic
 	);
 end entity;
 
@@ -210,6 +215,11 @@ begin
 		-- Trace defaults
 		traceData_out <= (others => 'X');
 		traceValid_out <= '0';
+
+		-- MegaDrive registers
+		regAddr_out <= (others => 'X');
+		regData_out <= (others => 'X');
+		regValid_out <= '0';
 
 		case rstate is
 			-- -------------------------------------------------------------------------------------
@@ -377,7 +387,13 @@ begin
 				rstate_next <= R_WRITE_REG_FINISH;
 				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
-				memBank_next(to_integer(unsigned(mdData_sync(6) & addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
+				if ( addrReg(6 downto 3) = "1111" ) then
+					memBank_next(to_integer(unsigned(mdData_sync(6) & addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
+				elsif ( addrReg(6 downto 3) = "0000" ) then
+					regAddr_out <= addrReg(2 downto 0);
+					regData_out <= mdData_sync;
+					regValid_out <= '1';
+				end if;
 			when R_WRITE_REG_FINISH =>
 				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
 					rstate_next <= R_IDLE;
@@ -410,13 +426,13 @@ begin
 					-- MD is writing
 					addrReg_next <= mdAddr_sync;
 					mdAS_next <= mdAS_sync;
-					if ( mdAddr_sync(22 downto 3) = x"A130F" ) then
-						-- MD is writing 0xA130Fx range (SSF2 registers)
-						if ( mdAddr_sync(2 downto 0) = "000" ) then
+					if ( mdAddr_sync(22 downto 7) = x"A130" ) then
+						-- MD is writing 0xA130xx range
+						if ( mdAddr_sync(6 downto 0) = "1111000" ) then
 							-- The 0xA130F0 register is not mapped
 							rstate_next <= R_WRITE_OTHER_NOP1;
 						else
-							-- The 0xA130F2-0xA130FE registers are mapped
+							-- All others are mapped
 							rstate_next <= R_WRITE_REG_NOP1;
 						end if;
 					elsif ( mdAddr_sync(22) = '0' ) then

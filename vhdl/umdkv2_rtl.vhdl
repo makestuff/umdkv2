@@ -370,9 +370,14 @@ begin
 			-- Trace pipe
 			traceEnable_in => reg1(TRACE),
 			traceData_out  => trc72Data,
-			traceValid_out => trc72Valid
+			traceValid_out => trc72Valid,
 			--traceData_out  => open, --trc72Data,
 			--traceValid_out => open  --trc72Valid
+
+			-- MegaDrive register writes
+			regAddr_out    => open,
+			regData_out    => open,
+			regValid_out   => open
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
