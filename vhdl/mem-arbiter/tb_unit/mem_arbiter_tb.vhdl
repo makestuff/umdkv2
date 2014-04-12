@@ -78,7 +78,7 @@ architecture behavioural of mem_arbiter_tb is
 
 	-- Trace pipe
 	signal traceEnable : std_logic;
-	signal traceData   : std_logic_vector(47 downto 0);
+	signal traceData   : std_logic_vector(71 downto 0);
 	signal traceValid  : std_logic;
 begin
 	-- Instantiate the memory pipe

@@ -55,7 +55,7 @@ entity mem_arbiter is
 
 		-- Trace pipe
 		traceEnable_in : in  std_logic;
-		traceData_out  : out std_logic_vector(47 downto 0);
+		traceData_out  : out std_logic_vector(71 downto 0);
 		traceValid_out : out std_logic
 	);
 end entity;
@@ -119,6 +119,8 @@ architecture rtl of mem_arbiter is
 	signal addrReg_next : std_logic_vector(22 downto 0);
 	signal mdAS         : std_logic;
 	signal mdAS_next    : std_logic;
+	signal count48      : unsigned(29 downto 0) := (others => '0');
+	signal count48_next : unsigned(29 downto 0);
 	signal memBank      : BankType := (
 		"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
 		"01000", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
@@ -148,6 +150,7 @@ begin
 				mdDSW_sync <= "11";
 				mdData_sync <= (others => '0');
 				mdAS <= '1';
+				count48 <= (others => '0');
 				memBank <= (
 					"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
 					"11111", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
@@ -163,6 +166,7 @@ begin
 				mdDSW_sync <= mdUDSW_in & mdLDSW_in;
 				mdData_sync <= mdData_io;
 				mdAS <= mdAS_next;
+				count48 <= count48_next;
 				memBank <= memBank_next;
 			end if;
 		end if;
@@ -177,7 +181,7 @@ begin
 			mcReady_in, mcData_in, mcRDV_in,
 			ppCmd_in, ppAddr_in, ppData_in,
 			memBank,
-			traceEnable_in
+			count48, traceEnable_in
 		)
 		-- Function to generate SDRAM physical address using MD address and memBank (SSF2) regs
 		impure function transAddr(addr : std_logic_vector(22 downto 0)) return std_logic_vector is
@@ -239,7 +243,7 @@ begin
 				if ( mcRDV_in = '1' ) then
 					rstate_next <= R_READ_OWNED_NOP1;
 					dataReg_next <= mcData_in;
-					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mcData_in;
+					traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mcData_in;
 					traceValid_out <= traceEnable_in;
 				end if;
 
@@ -277,7 +281,7 @@ begin
 			when R_READ_OTHER =>
 				if ( mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
-					traceData_out <= "000000" & mdAS & TR_RD & addrReg & mdData_sync;
+					traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mdData_sync;
 					traceValid_out <= traceEnable_in;
 				end if;
 
@@ -305,7 +309,7 @@ begin
 			--
 			when R_WRITE_OWNED_EXEC =>
 				rstate_next <= R_WRITE_OWNED_FINISH;
-				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
 				mcCmd_out <= MC_WR;
 				mcAddr_out <= transAddr(addrReg);
@@ -340,7 +344,7 @@ begin
 			--
 			when R_WRITE_OTHER_EXEC =>
 				rstate_next <= R_WRITE_OTHER_FINISH;
-				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
 			when R_WRITE_OTHER_FINISH =>
 				if ( mdDSW_sync = "11" ) then
@@ -371,7 +375,7 @@ begin
 			--
 			when R_WRITE_REG_EXEC =>
 				rstate_next <= R_WRITE_REG_FINISH;
-				traceData_out <= "000000" & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
 				memBank_next(to_integer(unsigned(mdData_sync(6) & addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
 			when R_WRITE_REG_FINISH =>
@@ -461,4 +465,6 @@ begin
 	end process;
 
 	mdDTACK_out <= '0';  -- for now, just rely on MD's auto-DTACK
+	count48_next <= count48 + 1;
+	
 end architecture;

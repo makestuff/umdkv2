@@ -114,9 +114,9 @@ architecture structural of umdkv2 is
 	-- Trace data
 	--signal count      : unsigned(31 downto 0) := (others => '0');
 	--signal count_next : unsigned(31 downto 0);
-	signal trc48Data  : std_logic_vector(47 downto 0);
-	signal trc48Valid : std_logic;
-	signal trc48Ready : std_logic;
+	signal trc72Data  : std_logic_vector(71 downto 0);
+	signal trc72Valid : std_logic;
+	signal trc72Ready : std_logic;
 	signal trc8Data   : std_logic_vector(7 downto 0);
 	signal trc8Valid  : std_logic;
 	signal trc8Ready  : std_logic;
@@ -164,21 +164,15 @@ begin
 		f2hReady_in when chanAddr_in = "0000010"
 		else '0';
 
-	--count_next <=
-	--	count + 1 when trc48Ready = '1'
-	--	else count;
-	--trc48Data <= std_logic_vector(count(31 downto 16)) & std_logic_vector(count);
-	--trc48Valid <= not(reset_in);
-
-	-- Trace Pipe 48->8 converter
-	trace_conv: entity work.conv_48to8
+	-- Trace Pipe 72->8 converter
+	trace_conv: entity work.conv_72to8
 		port map(
 			clk_in      => clk_in,
 			reset_in    => reset_in,
 			
-			data48_in   => trc48Data,
-			valid48_in  => trc48Valid,
-			ready48_out => trc48Ready,
+			data72_in   => trc72Data,
+			valid72_in  => trc72Valid,
+			ready72_out => trc72Ready,
 			
 			data8_out   => trc8Data,
 			valid8_out  => trc8Valid,
@@ -333,10 +327,10 @@ begin
 
 			-- Trace pipe
 			traceEnable_in => reg1(1),
-			traceData_out  => trc48Data,
-			traceValid_out => trc48Valid
-			--traceData_out  => open, --trc48Data,
-			--traceValid_out => open  --trc48Valid
+			traceData_out  => trc72Data,
+			traceValid_out => trc72Valid
+			--traceData_out  => open, --trc72Data,
+			--traceValid_out => open  --trc72Valid
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
