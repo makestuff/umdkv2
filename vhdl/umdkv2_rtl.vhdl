@@ -135,8 +135,10 @@ architecture structural of umdkv2 is
 
 	-- MD register writes
 	signal regAddr    : std_logic_vector(2 downto 0);
-	signal regData    : std_logic_vector(15 downto 0);
-	signal regValid   : std_logic;
+	signal regWrData  : std_logic_vector(15 downto 0);
+	signal regWrValid : std_logic;
+	signal regRdData  : std_logic_vector(15 downto 0);
+	signal regRdReady : std_logic;
 	signal spdrValid  : std_logic;
 	
 	-- Readable versions of external driven signals
@@ -241,7 +243,7 @@ begin
 			-- Send pipe
 			turbo_in      => mdCfg(TURBO),
 			suppress_in   => mdCfg(SUPPRESS),
-			sendData_in   => regData(7 downto 0),
+			sendData_in   => regWrData(7 downto 0),
 			sendValid_in  => spdrValid,
 			sendReady_out => open,
 			
@@ -392,10 +394,12 @@ begin
 			--traceData_out  => open, --trc72Data,
 			--traceValid_out => open  --trc72Valid
 
-			-- MegaDrive register writes
+			-- MegaDrive register writes & reads
 			regAddr_out    => regAddr,
-			regData_out    => regData,
-			regValid_out   => regValid
+			regWrData_out  => regWrData,
+			regWrValid_out => regWrValid,
+			regRdData_in   => regRdData,
+			regRdReady_out => regRdReady
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
@@ -432,11 +436,11 @@ begin
 		else reg1;
 
 	mdCfg_next <=
-		regData(3 downto 0) when regAddr = "000" and regValid = '1'
+		regWrData(3 downto 0) when regAddr = "000" and regWrValid = '1'
 		else mdCfg;
 
 	spdrValid <=
-		'1' when regAddr = "001" and regValid = '1'
+		'1' when regAddr = "001" and regWrValid = '1'
 		else '0';
 
 	-- Connect channel 0 writes to the SDRAM command pipe and response pipe ready to ch0 read ready
@@ -467,4 +471,16 @@ begin
 	spiCS_out(SDCARDCS) <=
 		'0' when mdCfg(CHIPSEL+1 downto CHIPSEL) = SDCARD
 		else '1';
+
+	-- Dummy register reads
+	with regAddr select regRdData <=
+		x"CAFE" when "000",
+		x"BABE" when "001",
+		x"DEAD" when "010",
+		x"F00D" when "011",
+		x"1234" when "100",
+		x"5678" when "101",
+		x"ABCD" when "110",
+		x"B00B" when others;
+
 end architecture;

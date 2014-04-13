@@ -60,8 +60,10 @@ entity mem_arbiter is
 
 		-- MegaDrive registers
 		regAddr_out    : out std_logic_vector(2 downto 0);
-		regData_out    : out std_logic_vector(15 downto 0);
-		regValid_out   : out std_logic
+		regWrData_out  : out std_logic_vector(15 downto 0);
+		regWrValid_out : out std_logic;
+		regRdData_in   : in  std_logic_vector(15 downto 0);
+		regRdReady_out : out std_logic
 	);
 end entity;
 
@@ -139,6 +141,9 @@ architecture rtl of mem_arbiter is
 	signal mdAddr_sync  : std_logic_vector(22 downto 0) := (others => '0');
 	signal mdData_sync  : std_logic_vector(15 downto 0) := (others => '0');
 	constant TR_RD      : std_logic_vector(1 downto 0) := "11";
+
+	-- Flag to allow arbiter state machine to kick bus-controller
+	signal genRDV       : std_logic;
 begin
 	-- Infer registers
 	process(clk_in)
@@ -185,7 +190,7 @@ begin
 			mdOE_sync, mdDSW_sync, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
 			mcReady_in, mcData_in, mcRDV_in,
 			ppCmd_in, ppAddr_in, ppData_in,
-			memBank,
+			memBank, regRdData_in,
 			count48, traceEnable_in
 		)
 		-- Function to generate SDRAM physical address using MD address and memBank (SSF2) regs
@@ -218,8 +223,12 @@ begin
 
 		-- MegaDrive registers
 		regAddr_out <= (others => 'X');
-		regData_out <= (others => 'X');
-		regValid_out <= '0';
+		regWrData_out <= (others => 'X');
+		regWrValid_out <= '0';
+		regRdReady_out <= '0';
+
+		-- Flag for read data valid
+		genRDV <= '0';
 
 		case rstate is
 			-- -------------------------------------------------------------------------------------
@@ -253,6 +262,7 @@ begin
 				if ( mcRDV_in = '1' ) then
 					rstate_next <= R_READ_OWNED_NOP1;
 					dataReg_next <= mcData_in;
+					genRDV <= '1';
 					traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mcData_in;
 					traceValid_out <= traceEnable_in;
 				end if;
@@ -260,6 +270,7 @@ begin
 			-- Give the host enough time for one I/O cycle, if it wants it.
 			--
 			when R_READ_OWNED_NOP1 =>
+				genRDV <= '1';
 				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
@@ -391,8 +402,8 @@ begin
 					memBank_next(to_integer(unsigned(mdData_sync(6) & addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
 				elsif ( addrReg(6 downto 3) = "0000" ) then
 					regAddr_out <= addrReg(2 downto 0);
-					regData_out <= mdData_sync;
-					regValid_out <= '1';
+					regWrData_out <= mdData_sync;
+					regWrValid_out <= '1';
 				end if;
 			when R_WRITE_REG_FINISH =>
 				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
@@ -413,7 +424,15 @@ begin
 					-- MD is reading
 					addrReg_next <= mdAddr_sync;
 					mdAS_next <= mdAS_sync;
-					if ( mdAddr_sync(22) = '0' ) then
+					if ( mdAddr_sync(22 downto 7) = x"A130" ) then
+						-- MD is reading the 0xA130xx range
+						rstate_next <= R_READ_OWNED_NOP1;
+						regAddr_out <= mdAddr_sync(2 downto 0);
+						dataReg_next <= regRdData_in;
+						regRdReady_out <= '1';
+						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & mdAddr_sync & regRdData_in;
+						traceValid_out <= traceEnable_in;
+					elsif ( mdAddr_sync(22) = '0' ) then
 						-- MD is doing an owned read (i.e in our address ranges)
 						rstate_next <= R_READ_OWNED_WAIT;
 						mcCmd_out <= MC_RD;
@@ -450,7 +469,7 @@ begin
 	-- ##                     State machine to control the MD data-bus buffer                     ##
 	-- #############################################################################################
 	process(
-		mstate, addrReg, dataReg, mdOE_sync, mdAddr_sync(22), mcData_in, mcRDV_in)
+		mstate, addrReg, dataReg, mdOE_sync, mdAddr_sync(22), mcData_in, genRDV)
 	begin
 		mstate_next <= mstate;
 		mdData_io <= (others => 'Z');
@@ -460,7 +479,7 @@ begin
 			when M_READ_WAIT =>
 				mdData_io <= mcData_in;
 				mdDriveBus_out <= '1';
-				if ( mcRDV_in = '1' ) then
+				if ( genRDV = '1' ) then
 					mstate_next <= M_END_WAIT;
 				end if;
 
@@ -474,7 +493,7 @@ begin
 				end if;
 
 			when M_IDLE =>
-				if ( mdOE_sync = '0' and mdAddr_sync(22) = '0' ) then
+				if ( mdOE_sync = '0' and (mdAddr_sync(22) = '0' or mdAddr_sync(22 downto 7) = x"A130") ) then
 					mstate_next <= M_READ_WAIT;
 				end if;
 		end case;

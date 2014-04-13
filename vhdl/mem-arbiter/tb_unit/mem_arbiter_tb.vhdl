@@ -83,8 +83,10 @@ architecture behavioural of mem_arbiter_tb is
 
  -- MegaDrive registers
 	signal regAddr     : std_logic_vector(2 downto 0);
-	signal regData     : std_logic_vector(15 downto 0);
-	signal regValid    : std_logic;
+	signal regWrData   : std_logic_vector(15 downto 0);
+	signal regWrValid  : std_logic;
+	signal regRdData   : std_logic_vector(15 downto 0);
+	signal regRdReady  : std_logic;
 begin
 	-- Instantiate the memory pipe
 	mem_pipe: entity work.mem_pipe
@@ -150,8 +152,10 @@ begin
 
 			-- MegaDrive registers
 			regAddr_out    => regAddr,
-			regData_out    => regData,
-			regValid_out   => regValid
+			regWrData_out  => regWrData,
+			regWrValid_out => regWrValid,
+			regRdData_in   => regRdData,
+			regRdReady_out => regRdReady
 		);
 
 	-- Instantiate the memory controller
