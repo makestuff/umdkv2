@@ -114,8 +114,10 @@ architecture structural of umdkv2 is
 	signal mcRDV      : std_logic;
 
 	-- Registers implementing the channels
-	signal reg1       : std_logic_vector(5 downto 0) := "000001";
-	signal reg1_next  : std_logic_vector(5 downto 0);
+	signal reg1       : std_logic_vector(1 downto 0) := "01";
+	signal reg1_next  : std_logic_vector(1 downto 0);
+	signal mdCfg      : std_logic_vector(3 downto 0) := (others => '0');
+	signal mdCfg_next : std_logic_vector(3 downto 0);
 
 	-- Trace data
 	--signal count      : unsigned(31 downto 0) := (others => '0');
@@ -130,26 +132,42 @@ architecture structural of umdkv2 is
 	signal trcValid   : std_logic;
 	signal trcReady   : std_logic;
 	signal trcDepth   : std_logic_vector(14 downto 0);
+
+	-- MD register writes
+	signal regAddr    : std_logic_vector(2 downto 0);
+	signal regData    : std_logic_vector(15 downto 0);
+	signal regValid   : std_logic;
+	signal spdrValid  : std_logic;
 	
 	-- Readable versions of external driven signals
 	signal mdReset    : std_logic;
 
-	-- Bits in the config register reg1
+	-- Bits in the host config register reg1
 	constant RESET    : integer := 0;
 	constant TRACE    : integer := 1;
-	constant TURBO    : integer := 2;
-	constant SUPPRESS : integer := 3;
-	constant CHIPSEL  : integer := 4;
+
+	-- Bits in the MD config register mdCfg
+	constant TURBO    : integer := 0;
+	constant SUPPRESS : integer := 1;
+	constant CHIPSEL  : integer := 2;
+
+	-- Chip-select constants
+	constant FLASH    : std_logic_vector(1 downto 0) := "01";
+	constant SDCARD   : std_logic_vector(1 downto 0) := "10";
+	constant FLASHCS  : integer := 0;
+	constant SDCARDCS : integer := 1;
 begin
 	-- Infer registers
 	process(clk_in)
 	begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
-				reg1 <= "000001";
+				reg1 <= "01";
+				mdCfg <= (others => '0');
 				--count <= (others => '0');
 			else
 				reg1 <= reg1_next;
+				mdCfg <= mdCfg_next;
 				--count <= count_next;
 			end if;
 		end if;
@@ -158,7 +176,7 @@ begin
 	-- Select values to return for each channel when the host is reading
 	with chanAddr_in select f2hData_out <=
 		rspData                     when "0000000",
-		"00" & reg1                 when "0000001",
+		"000000" & reg1             when "0000001",
 		trcData                     when "0000010",
 		"0" & trcDepth(14 downto 8) when "0000011",
 		trcDepth(7 downto 0)        when "0000100",
@@ -221,11 +239,11 @@ begin
 			clk_in        => clk_in,
 			
 			-- Send pipe
-			turbo_in      => reg1(TURBO),
-			suppress_in   => reg1(SUPPRESS),
-			sendData_in   => (others => 'X'), --sendData,
-			sendValid_in  => '0',             -- sendValid,
-			sendReady_out => open,            -- sendReady,
+			turbo_in      => mdCfg(TURBO),
+			suppress_in   => mdCfg(SUPPRESS),
+			sendData_in   => regData(7 downto 0),
+			sendValid_in  => spdrValid,
+			sendReady_out => open,
 			
 			-- Receive pipe
 			recvData_out  => open,            -- recvData,
@@ -375,9 +393,9 @@ begin
 			--traceValid_out => open  --trc72Valid
 
 			-- MegaDrive register writes
-			regAddr_out    => open,
-			regData_out    => open,
-			regValid_out   => open
+			regAddr_out    => regAddr,
+			regData_out    => regData,
+			regValid_out   => regValid
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
@@ -410,8 +428,16 @@ begin
 		);
 
 	reg1_next <=
-		h2fData_in(5 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
+		h2fData_in(1 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
 		else reg1;
+
+	mdCfg_next <=
+		regData(3 downto 0) when regAddr = "000" and regValid = '1'
+		else mdCfg;
+
+	spdrValid <=
+		'1' when regAddr = "001" and regValid = '1'
+		else '0';
 
 	-- Connect channel 0 writes to the SDRAM command pipe and response pipe ready to ch0 read ready
 	cmdData <=
@@ -435,5 +461,10 @@ begin
 	mdReset_out <= mdReset;
 
 	-- Drive SPI chip-select lines
-	spiCS_out <= not reg1(CHIPSEL+1 downto CHIPSEL);
+	spiCS_out(FLASHCS) <=
+		'0' when mdCfg(CHIPSEL+1 downto CHIPSEL) = FLASH
+		else '1';
+	spiCS_out(SDCARDCS) <=
+		'0' when mdCfg(CHIPSEL+1 downto CHIPSEL) = SDCARD
+		else '1';
 end architecture;
