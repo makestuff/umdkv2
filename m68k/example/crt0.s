@@ -16,17 +16,18 @@
 
 /* $Id: crt0.s,v 1.12 2011/01/25 16:21:30 elbarto Exp $ */
 
-.text
+	.psize	0
+	.text
 
-.global _hblank
-.global _vblank
-.global readBlock
+	.global	_hblank
+	.global	_vblank
+	.global	readBlock
 
-.extern htimer
-.extern vtimer
-.extern my_func
+	.extern	htimer
+	.extern	vtimer
+	.extern	my_func
 
-	.org    0x0000
+	.org	0x0000
 vectors:
 	dc.l	0x0		/* Initial Stack Address */
 	dc.l	start		/* Start of program Code */
@@ -113,7 +114,7 @@ start:
 	move.b	0xa10001, d0
 	andi.b	#0x0f, d0
 	beq.s	noTMSS
-	move.l	#0x53454741, 0xa14000	| write "SEGA" to TMSS register
+	move.l	#0x53454741, 0xa14000	/* write "SEGA" to TMSS register */
 
 noTMSS:
 	move.l	#0x3FFF, d0
@@ -137,9 +138,9 @@ ccMem:
 	suba.l	a4, a4
 	suba.l	a5, a5
 	suba.l	fp, fp
-	suba.l	sp, sp			| set stack pointer = 0
-	move.w	#0x2300, sr		| switch to user mode
-	jmp	main			| start main(), which must not return
+	suba.l	sp, sp			/* set stack pointer = 0 */
+	move.w	#0x2300, sr		/* switch to user mode */
+	jmp	main			/* start main(), which must not return */
 	
 interrupt:
 	rte
@@ -153,12 +154,12 @@ readBlock:
 	movem.l a0-a1, -(sp)
 	lea	0xA13002, a0
 	lea	0xFF1000, a1
-	move.w	#7, -2(a0)    | assert flash CS, suppress & turbo
-	move.w	#0x0003, (a0) | read command
-	move.w	#0x0006, (a0)
+	move.w	#(TURBO|SUPPRESS|FLASH), -2(a0)
+	move.w	#0x0003, (a0)		/* read command */
+	move.w	#0x0006, (a0)		/* address 0x60000: top 128KiB */
 	move.w	#0x0000, (a0)
 	move.w	#0x0000, (a0)
-	move.w	#5, -2(a0)    | assert flash CS & turbo
+	move.w	#(TURBO|FLASH), -2(a0)
 	move.w	#0x00FF, (a0)
 	move.w	(a0), (a1)+
 	move.w	#0x00FF, (a0)

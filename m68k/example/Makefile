@@ -5,7 +5,7 @@ CC_SRCS := $(wildcard *.c)
 CC_OBJS := $(CC_SRCS:%.c=%.o)
 
 AS_FLAGS := \
-	-D -mcpu=68000 -march=68000 --traditional-format --register-prefix-optional -L -g #-alh
+	-D -mcpu=68000 -march=68000 --bitwise-or --traditional-format --register-prefix-optional -L -g -al #-alh
 CC_FLAGS := \
 	-m68000 -mshort -c -g -Wall -Wextra -Wundef -pedantic-errors -std=c99 \
 	-Wstrict-prototypes -Wno-missing-field-initializers
