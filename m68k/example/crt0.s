@@ -20,6 +20,7 @@
 
 .global _hblank
 .global _vblank
+.global readBlock
 
 .extern htimer
 .extern vtimer
@@ -142,6 +143,41 @@ ccMem:
 	
 interrupt:
 	rte
+
+	TURBO = 0x0001
+	SUPPRESS = 0x0002
+	FLASH = 0x0004
+	SDCARD = 0x0008
+	
+readBlock:
+	movem.l a0-a1, -(sp)
+	lea	0xA13002, a0
+	lea	0xFF1000, a1
+	move.w	#7, -2(a0)    | assert flash CS, suppress & turbo
+	move.w	#0x0003, (a0) | read command
+	move.w	#0x0006, (a0)
+	move.w	#0x0000, (a0)
+	move.w	#0x0000, (a0)
+	move.w	#5, -2(a0)    | assert flash CS & turbo
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w	#0x00FF, (a0)
+	move.w	(a0), (a1)+
+	move.w  #0, -2(a0)
+	movem.l (sp)+, a0-a1
+	rts
 
 _hblank:
 	addq.w	#1, htimer

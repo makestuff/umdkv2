@@ -140,6 +140,8 @@ architecture structural of umdkv2 is
 	signal regRdData  : std_logic_vector(15 downto 0);
 	signal regRdReady : std_logic;
 	signal spdrValid  : std_logic;
+	signal spdrData   : std_logic_vector(7 downto 0);
+	signal spdrReady  : std_logic;
 	
 	-- Readable versions of external driven signals
 	signal mdReset    : std_logic;
@@ -248,9 +250,9 @@ begin
 			sendReady_out => open,
 			
 			-- Receive pipe
-			recvData_out  => open,            -- recvData,
+			recvData_out  => spdrData,            -- recvData,
 			recvValid_out => open,            -- recvValid,
-			recvReady_in  => '0',             -- recvReady,
+			recvReady_in  => spdrReady,             -- recvReady,
 			
 			-- SPI interface
 			spiClk_out    => spiClk_out,
@@ -472,10 +474,14 @@ begin
 		'0' when mdCfg(CHIPSEL+1 downto CHIPSEL) = SDCARD
 		else '1';
 
+	spdrReady <=
+		'1' when regAddr = "001" and regRdReady = '1'
+		else '0';
+	
 	-- Dummy register reads
 	with regAddr select regRdData <=
 		x"CAFE" when "000",
-		x"BABE" when "001",
+		x"FF" & spdrData when "001",
 		x"DEAD" when "010",
 		x"F00D" when "011",
 		x"1234" when "100",
