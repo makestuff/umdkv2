@@ -138,8 +138,9 @@ architecture structural of umdkv2 is
 	signal regWrData   : std_logic_vector(15 downto 0);
 	signal regWrValid  : std_logic;
 	signal regRdData   : std_logic_vector(15 downto 0);
-	signal regRdReady  : std_logic;
+	signal regRdStrobe : std_logic;
 	signal spiRdData   : std_logic_vector(15 downto 0);
+	signal spiRdStrobe : std_logic;
 	signal spiWrValid  : std_logic;
 
 	-- SPI send & receive pipes
@@ -249,7 +250,7 @@ begin
 			cpuWrData_in   => regWrData,
 			cpuWrValid_in  => spiWrValid,
 			cpuRdData_out  => spiRdData,
-			cpuRdReady_in  => '1',
+			cpuRdStrobe_in => spiRdStrobe,
 
 			-- Sending SPI data
 			sendData_out   => sendData,
@@ -389,50 +390,50 @@ begin
 	-- Instantiate the memory arbiter unit
 	mem_arbiter: entity work.mem_arbiter
 		port map(
-			clk_in         => clk_in,
-			reset_in       => reset_in,
+			clk_in          => clk_in,
+			reset_in        => reset_in,
 
 			-- Connetion to mem_pipe
-			ppReady_out    => ppReady,
-			ppCmd_in       => ppCmd,
-			ppAddr_in      => ppAddr,
-			ppData_in      => ppDataWr,
-			ppData_out     => ppDataRd,
-			ppRDV_out      => ppRDV,
+			ppReady_out     => ppReady,
+			ppCmd_in        => ppCmd,
+			ppAddr_in       => ppAddr,
+			ppData_in       => ppDataWr,
+			ppData_out      => ppDataRd,
+			ppRDV_out       => ppRDV,
 
 			-- Connection to mem_ctrl
-			mcAutoMode_out => mcAutoMode,
-			mcReady_in     => mcReady,
-			mcCmd_out      => mcCmd,
-			mcAddr_out     => mcAddr,
-			mcData_out     => mcDataWr,
-			mcData_in      => mcDataRd,
-			mcRDV_in       => mcRDV,
+			mcAutoMode_out  => mcAutoMode,
+			mcReady_in      => mcReady,
+			mcCmd_out       => mcCmd,
+			mcAddr_out      => mcAddr,
+			mcData_out      => mcDataWr,
+			mcData_in       => mcDataRd,
+			mcRDV_in        => mcRDV,
 
 			-- Connection to MegaDrive
-			mdDriveBus_out => mdDriveBus_out,
-			mdReset_in     => mdReset,
-			mdDTACK_out    => mdDTACK_out,
-			mdAddr_in      => mdAddr_in,
-			mdData_io      => mdData_io,
-			mdOE_in        => mdOE_in,
-			mdAS_in        => mdAS_in,
-			mdLDSW_in      => mdLDSW_in,
-			mdUDSW_in      => mdUDSW_in,
+			mdDriveBus_out  => mdDriveBus_out,
+			mdReset_in      => mdReset,
+			mdDTACK_out     => mdDTACK_out,
+			mdAddr_in       => mdAddr_in,
+			mdData_io       => mdData_io,
+			mdOE_in         => mdOE_in,
+			mdAS_in         => mdAS_in,
+			mdLDSW_in       => mdLDSW_in,
+			mdUDSW_in       => mdUDSW_in,
 
 			-- Trace pipe
-			traceEnable_in => reg1(TRACE),
-			traceData_out  => trc72Data,
-			traceValid_out => trc72Valid,
-			--traceData_out  => open, --trc72Data,
-			--traceValid_out => open  --trc72Valid
+			traceEnable_in  => reg1(TRACE),
+			traceData_out   => trc72Data,
+			traceValid_out  => trc72Valid,
+			--traceData_out   => open, --trc72Data,
+			--traceValid_out  => open  --trc72Valid
 
 			-- MegaDrive register writes & reads
-			regAddr_out    => regAddr,
-			regWrData_out  => regWrData,
-			regWrValid_out => regWrValid,
-			regRdData_in   => regRdData,
-			regRdReady_out => regRdReady
+			regAddr_out     => regAddr,
+			regWrData_out   => regWrData,
+			regWrValid_out  => regWrValid,
+			regRdData_in    => regRdData,
+			regRdStrobe_out => regRdStrobe
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
@@ -503,6 +504,9 @@ begin
 
 	spiWrValid <=
 		'1' when regAddr(2 downto 1) = "00" and regWrValid = '1'
+		else '0';
+	spiRdStrobe <=
+		'1' when regAddr(2 downto 1) = "00" and regRdStrobe = '1'
 		else '0';
 	
 	-- Dummy register reads

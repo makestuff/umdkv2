@@ -59,11 +59,11 @@ entity mem_arbiter is
 		traceValid_out : out std_logic;
 
 		-- MegaDrive registers
-		regAddr_out    : out std_logic_vector(2 downto 0);
-		regWrData_out  : out std_logic_vector(15 downto 0);
-		regWrValid_out : out std_logic;
-		regRdData_in   : in  std_logic_vector(15 downto 0);
-		regRdReady_out : out std_logic
+		regAddr_out     : out std_logic_vector(2 downto 0);
+		regWrData_out   : out std_logic_vector(15 downto 0);
+		regWrValid_out  : out std_logic;
+		regRdData_in    : in  std_logic_vector(15 downto 0);
+		regRdStrobe_out : out std_logic
 	);
 end entity;
 
@@ -225,7 +225,7 @@ begin
 		regAddr_out <= (others => 'X');
 		regWrData_out <= (others => 'X');
 		regWrValid_out <= '0';
-		regRdReady_out <= '0';
+		regRdStrobe_out <= '0';
 
 		-- Flag for read data valid
 		genRDV <= '0';
@@ -429,7 +429,7 @@ begin
 						rstate_next <= R_READ_OWNED_NOP1;
 						regAddr_out <= mdAddr_sync(2 downto 0);
 						dataReg_next <= regRdData_in;
-						regRdReady_out <= '1';
+						regRdStrobe_out <= '1';
 						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & mdAddr_sync & regRdData_in;
 						traceValid_out <= traceEnable_in;
 					elsif ( mdAddr_sync(22) = '0' ) then

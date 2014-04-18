@@ -86,7 +86,7 @@ architecture behavioural of mem_arbiter_tb is
 	signal regWrData   : std_logic_vector(15 downto 0);
 	signal regWrValid  : std_logic;
 	signal regRdData   : std_logic_vector(15 downto 0);
-	signal regRdReady  : std_logic;
+	signal regRdStrobe : std_logic;
 begin
 	-- Instantiate the memory pipe
 	mem_pipe: entity work.mem_pipe
@@ -114,48 +114,48 @@ begin
 	-- Instantiate the memory arbiter for testing
 	uut: entity work.mem_arbiter
 		port map(
-			clk_in         => sysClk,
-			reset_in       => reset,
+			clk_in          => sysClk,
+			reset_in        => reset,
 
 			-- Connetion to mem_pipe
-			ppReady_out    => ppReady,
-			ppCmd_in       => ppCmd,
-			ppAddr_in      => ppAddr,
-			ppData_in      => ppDataWr,
-			ppData_out     => ppDataRd,
-			ppRDV_out      => ppRDV,
+			ppReady_out     => ppReady,
+			ppCmd_in        => ppCmd,
+			ppAddr_in       => ppAddr,
+			ppData_in       => ppDataWr,
+			ppData_out      => ppDataRd,
+			ppRDV_out       => ppRDV,
 
 			-- Connection to mem_ctrl
-			mcAutoMode_out => mcAutoMode,
-			mcReady_in     => mcReady,
-			mcCmd_out      => mcCmd,
-			mcAddr_out     => mcAddr,
-			mcData_out     => mcDataWr,
-			mcData_in      => mcDataRd,
-			mcRDV_in       => mcRDV,
+			mcAutoMode_out  => mcAutoMode,
+			mcReady_in      => mcReady,
+			mcCmd_out       => mcCmd,
+			mcAddr_out      => mcAddr,
+			mcData_out      => mcDataWr,
+			mcData_in       => mcDataRd,
+			mcRDV_in        => mcRDV,
 
 			-- Connection to MegaDrive
-			mdDriveBus_out => mdDriveBus,
-			mdReset_in     => mdReset,
-			mdDTACK_out    => mdDTACK,
-			mdAddr_in      => mdAddr,
-			mdData_io      => mdData,
-			mdOE_in        => mdOE,
-			mdAS_in        => mdAS,
-			mdLDSW_in      => mdLDSW,
-			mdUDSW_in      => mdUDSW,
+			mdDriveBus_out  => mdDriveBus,
+			mdReset_in      => mdReset,
+			mdDTACK_out     => mdDTACK,
+			mdAddr_in       => mdAddr,
+			mdData_io       => mdData,
+			mdOE_in         => mdOE,
+			mdAS_in         => mdAS,
+			mdLDSW_in       => mdLDSW,
+			mdUDSW_in       => mdUDSW,
 
 			-- Trace pipe
-			traceEnable_in => traceEnable,
-			traceData_out  => traceData,
-			traceValid_out => traceValid,
+			traceEnable_in  => traceEnable,
+			traceData_out   => traceData,
+			traceValid_out  => traceValid,
 
 			-- MegaDrive registers
-			regAddr_out    => regAddr,
-			regWrData_out  => regWrData,
-			regWrValid_out => regWrValid,
-			regRdData_in   => regRdData,
-			regRdReady_out => regRdReady
+			regAddr_out     => regAddr,
+			regWrData_out   => regWrData,
+			regWrValid_out  => regWrValid,
+			regRdData_in    => regRdData,
+			regRdStrobe_out => regRdStrobe
 		);
 
 	-- Instantiate the memory controller

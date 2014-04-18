@@ -29,7 +29,7 @@ entity spi_funnel is
 		cpuWrData_in   : in  std_logic_vector(15 downto 0);
 		cpuWrValid_in  : in  std_logic;
 		cpuRdData_out  : out std_logic_vector(15 downto 0);
-		cpuRdReady_in  : in  std_logic;
+		cpuRdStrobe_in : in  std_logic;
 		
 		-- Sending SPI data
 		sendData_out   : out std_logic_vector(7 downto 0);
@@ -84,7 +84,7 @@ begin
 	end process;
 
 	-- Send state machine
-	process(sstate, lsb, cpuWrData_in, cpuWrValid_in, sendReady_in, cpuByteWide_in, byteWide)
+	process(sstate, lsb, cpuWrData_in, cpuWrValid_in, sendReady_in, cpuByteWide_in, cpuRdStrobe_in, byteWide)
 	begin
 		sstate_next <= sstate;
 		sendValid_out <= '0';
@@ -104,13 +104,13 @@ begin
 				sendData_out <= cpuWrData_in(15 downto 8);
 				if ( cpuByteWide_in = '1' ) then
 					-- We're sending single bytes rather than 16-bit words
-					if ( cpuWrValid_in = '1' and sendReady_in = '1' ) then
+					if ( cpuWrValid_in = '1' or cpuRdStrobe_in = '1' ) then
 						sendValid_out <= '1';
 						byteWide_next <= '1';
 					end if;
 				else
 					-- We're sending 16-bit words rather than single bytes
-					if ( cpuWrValid_in = '1' and sendReady_in = '1' ) then
+					if ( cpuWrValid_in = '1' or cpuRdStrobe_in = '1' ) then
 						sstate_next <= S_WRITE_LSB;
 						sendValid_out <= '1';
 						lsb_next <= cpuWrData_in(7 downto 0);
@@ -121,7 +121,7 @@ begin
 	end process;
 
 	-- Receive state machine
-	process(rstate, readData, recvData_in, recvValid_in, cpuRdReady_in, byteWide)
+	process(rstate, readData, recvData_in, recvValid_in, byteWide)
 	begin
 		rstate_next <= rstate;
 		readData_next <= readData;
@@ -129,7 +129,7 @@ begin
 			-- Wait for the LSB to arrive:
 			when S_WAIT_LSB =>
 				recvReady_out <= '1';  -- ready for data from 8-bit side
-				if ( recvValid_in = '1' and cpuRdReady_in = '1' ) then
+				if ( recvValid_in = '1' ) then
 					rstate_next <= S_WAIT_MSB;
 					readData_next(7 downto 0) <= recvData_in;
 				end if;

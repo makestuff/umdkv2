@@ -163,19 +163,12 @@ readBlock:
 	move.b	#0x00, 2(a0)
 	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
-	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
-	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
-	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
-	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
-	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
-	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
-	move.b	#0xFF, 2(a0)
 	move.b	2(a0), (a1)+
 	move.w  #0, 4(a0)
 
@@ -185,19 +178,12 @@ readBlock:
 	move.w	#0x0000, 0(a0)		/* address 0x60000: top 128KiB */
 	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
-	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
-	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
-	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
-	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
-	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
-	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
-	move.w	#0xFFFF, 0(a0)
 	move.w	0(a0), (a1)+
 	move.w  #0, 4(a0)
 	movem.l (sp)+, a0-a1
