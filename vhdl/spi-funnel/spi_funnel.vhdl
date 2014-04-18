@@ -43,19 +43,54 @@ entity spi_funnel is
 end entity;
 
 architecture rtl of spi_funnel is
+	type StateType is (
+		S_WRITE_MSB,
+		S_WRITE_LSB
+	);
+	signal state      : StateType := S_WRITE_MSB;
+	signal state_next : StateType;
+	signal lsb        : std_logic_vector(7 downto 0) := (others => '0');
+	signal lsb_next   : std_logic_vector(7 downto 0);
 begin
-	-- Send pipe 16->8 converter
-	send_pipe: entity work.conv_16to8
-		port map(
-			clk_in      => clk_in,
-			reset_in    => reset_in,
-			data16_in   => cpuWrData_in,
-			valid16_in  => cpuWrValid_in,
-			ready16_out => open,
-			data8_out   => sendData_out,
-			valid8_out  => sendValid_out,
-			ready8_in   => sendReady_in
-		);
+	-- Infer registers
+	process(clk_in)
+	begin
+		if ( rising_edge(clk_in) ) then
+			if ( reset_in = '1' ) then
+				state <= S_WRITE_MSB;
+				lsb <= (others => '0');
+			else
+				state <= state_next;
+				lsb <= lsb_next;
+			end if;
+		end if;
+	end process;
+
+	-- Next state logic
+	process(state, lsb, cpuWrData_in, cpuWrValid_in, sendReady_in)
+	begin
+		state_next <= state;
+		sendValid_out <= '0';
+		lsb_next <= lsb;
+		case state is
+			-- Write the LSB and return:
+			when S_WRITE_LSB =>
+				sendData_out <= lsb;
+				if ( sendReady_in = '1' ) then
+					sendValid_out <= '1';
+					state_next <= S_WRITE_MSB;
+				end if;
+				
+			-- When a word arrives, write the MSB:
+			when others =>
+				sendData_out <= cpuWrData_in(15 downto 8);
+				sendValid_out <= cpuWrValid_in;
+				if ( cpuWrValid_in = '1' and sendReady_in = '1' ) then
+					lsb_next <= cpuWrData_in(7 downto 0);
+					state_next <= S_WRITE_LSB;
+				end if;
+		end case;
+	end process;
 
 	-- Receive pipe 8->16 converter
 	cmd_conv: entity work.conv_8to16
