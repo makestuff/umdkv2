@@ -47,10 +47,18 @@ architecture rtl of spi_funnel is
 		S_WRITE_MSB,
 		S_WRITE_LSB
 	);
+	type RStateType is (
+		S_WAIT_MSB,
+		S_WAIT_LSB
+	);
 	signal sstate      : SStateType := S_WRITE_MSB;
 	signal sstate_next : SStateType;
+	signal rstate      : RStateType := S_WAIT_MSB;
+	signal rstate_next : RStateType;
 	signal lsb         : std_logic_vector(7 downto 0) := (others => '0');
 	signal lsb_next    : std_logic_vector(7 downto 0);
+	signal msb         : std_logic_vector(7 downto 0) := (others => '0');
+	signal msb_next    : std_logic_vector(7 downto 0);
 begin
 	-- Infer registers
 	process(clk_in)
@@ -58,15 +66,19 @@ begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
 				sstate <= S_WRITE_MSB;
+				rstate <= S_WAIT_MSB;
 				lsb <= (others => '0');
+				msb <= (others => '0');
 			else
 				sstate <= sstate_next;
+				rstate <= rstate_next;
 				lsb <= lsb_next;
+				msb <= msb_next;
 			end if;
 		end if;
 	end process;
 
-	-- Next state logic
+	-- Send state machine
 	process(sstate, lsb, cpuWrData_in, cpuWrValid_in, sendReady_in)
 	begin
 		sstate_next <= sstate;
@@ -92,16 +104,28 @@ begin
 		end case;
 	end process;
 
-	-- Receive pipe 8->16 converter
-	cmd_conv: entity work.conv_8to16
-		port map(
-			clk_in       => clk_in,
-			reset_in     => reset_in,
-			data8_in     => recvData_in,
-			valid8_in    => recvValid_in,
-			ready8_out   => recvReady_out,
-			data16_out   => cpuRdData_out,
-			valid16_out  => open,
-			ready16_in   => cpuRdReady_in
-		);
+	-- Receive state machine
+	process(rstate, msb, recvData_in, recvValid_in, cpuRdReady_in)
+	begin
+		rstate_next <= rstate;
+		msb_next <= msb;
+		case rstate is
+			-- Wait for the LSB to arrive:
+			when S_WAIT_LSB =>
+				recvReady_out <= cpuRdReady_in;  -- ready for data from 8-bit side
+				cpuRdData_out <= msb & recvData_in;
+				if ( recvValid_in = '1' and cpuRdReady_in = '1' ) then
+					rstate_next <= S_WAIT_MSB;
+				end if;
+				
+			-- Wait for the MSB to arrive:
+			when others =>
+				recvReady_out <= '1';  -- ready for data from 8-bit side
+				cpuRdData_out <= (others => 'X');
+				if ( recvValid_in = '1' ) then
+					msb_next <= recvData_in;
+					rstate_next <= S_WAIT_LSB;
+				end if;
+		end case;
+	end process;
 end architecture;
