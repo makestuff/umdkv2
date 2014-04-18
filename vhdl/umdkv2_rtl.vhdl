@@ -139,10 +139,17 @@ architecture structural of umdkv2 is
 	signal regWrValid : std_logic;
 	signal regRdData  : std_logic_vector(15 downto 0);
 	signal regRdReady : std_logic;
-	signal spdrValid  : std_logic;
-	signal spdrData   : std_logic_vector(7 downto 0);
-	signal spdrReady  : std_logic;
-	
+	signal spiRdData  : std_logic_vector(15 downto 0);
+	signal spiWrValid : std_logic;
+
+	-- SPI send & receive pipes
+	signal sendData   : std_logic_vector(7 downto 0);
+	signal sendValid  : std_logic;
+	signal sendReady  : std_logic;
+	signal recvData   : std_logic_vector(7 downto 0);
+	signal recvValid  : std_logic;
+	signal recvReady  : std_logic;
+
 	-- Readable versions of external driven signals
 	signal mdReset    : std_logic;
 
@@ -231,6 +238,30 @@ begin
 			outputReady_in  => trcReady
 		);
 
+	-- Instantiate the memory arbiter for testing
+	spi_funnel: entity work.spi_funnel
+		port map(
+			clk_in         => clk_in,
+			reset_in       => '0',
+
+			-- CPU I/O
+			--cpuByteWide_in => '0',
+			cpuWrData_in   => regWrData,
+			cpuWrValid_in  => spiWrValid,
+			cpuRdData_out  => spiRdData,
+			cpuRdReady_in  => '1',
+
+			-- Sending SPI data
+			sendData_out   => sendData,
+			sendValid_out  => sendValid,
+			sendReady_in   => sendReady,
+
+			-- Receiving SPI data
+			recvData_in    => recvData,
+			recvValid_in   => recvValid,
+			recvReady_out  => recvReady
+		);
+
 	-- SPI master
 	spi_master : entity work.spi_master
 		generic map(
@@ -245,14 +276,14 @@ begin
 			-- Send pipe
 			turbo_in      => mdCfg(TURBO),
 			suppress_in   => mdCfg(SUPPRESS),
-			sendData_in   => regWrData(7 downto 0),
-			sendValid_in  => spdrValid,
-			sendReady_out => open,
+			sendData_in   => sendData,
+			sendValid_in  => sendValid,
+			sendReady_out => sendReady,
 			
 			-- Receive pipe
-			recvData_out  => spdrData,            -- recvData,
-			recvValid_out => open,            -- recvValid,
-			recvReady_in  => spdrReady,             -- recvReady,
+			recvData_out  => recvData,
+			recvValid_out => recvValid,
+			recvReady_in  => recvReady,
 			
 			-- SPI interface
 			spiClk_out    => spiClk_out,
@@ -441,10 +472,6 @@ begin
 		regWrData(3 downto 0) when regAddr = "000" and regWrValid = '1'
 		else mdCfg;
 
-	spdrValid <=
-		'1' when regAddr = "001" and regWrValid = '1'
-		else '0';
-
 	-- Connect channel 0 writes to the SDRAM command pipe and response pipe ready to ch0 read ready
 	cmdData <=
 		h2fData_in when chanAddr_in = "0000000" and h2fValid_in = '1'
@@ -474,19 +501,19 @@ begin
 		'0' when mdCfg(CHIPSEL+1 downto CHIPSEL) = SDCARD
 		else '1';
 
-	spdrReady <=
-		'1' when regAddr = "001" and regRdReady = '1'
+	spiWrValid <=
+		'1' when regAddr = "001" and regWrValid = '1'
 		else '0';
 	
 	-- Dummy register reads
 	with regAddr select regRdData <=
-		x"CAFE" when "000",
-		x"FF" & spdrData when "001",
-		x"DEAD" when "010",
-		x"F00D" when "011",
-		x"1234" when "100",
-		x"5678" when "101",
-		x"ABCD" when "110",
-		x"B00B" when others;
+		x"CAFE"   when "000",
+		spiRdData when "001",
+		x"DEAD"   when "010",
+		x"F00D"   when "011",
+		x"1234"   when "100",
+		x"5678"   when "101",
+		x"ABCD"   when "110",
+		x"B00B"   when others;
 
 end architecture;
