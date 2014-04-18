@@ -67,106 +67,106 @@ end entity;
 
 architecture structural of umdkv2 is
 	-- Command Pipe input
-	signal cmdData    : std_logic_vector(7 downto 0);
-	signal cmdValid   : std_logic;
-	signal cmdReady   : std_logic;
+	signal cmdData     : std_logic_vector(7 downto 0);
+	signal cmdValid    : std_logic;
+	signal cmdReady    : std_logic;
 
 	-- 8-bit Command Pipe (FIFO -> 8to16)
-	signal cmd8Data   : std_logic_vector(7 downto 0);
-	signal cmd8Valid  : std_logic;
-	signal cmd8Ready  : std_logic;
+	signal cmd8Data    : std_logic_vector(7 downto 0);
+	signal cmd8Valid   : std_logic;
+	signal cmd8Ready   : std_logic;
 	
 	-- 16-bit Command Pipe (8to16 -> MemPipe)
-	signal cmd16Data  : std_logic_vector(15 downto 0);
-	signal cmd16Valid : std_logic;
-	signal cmd16Ready : std_logic;
+	signal cmd16Data   : std_logic_vector(15 downto 0);
+	signal cmd16Valid  : std_logic;
+	signal cmd16Ready  : std_logic;
 
 	-- 16-bit Response Pipe (MemPipe -> 16to8)
-	signal rsp16Data  : std_logic_vector(15 downto 0);
-	signal rsp16Valid : std_logic;
-	signal rsp16Ready : std_logic;
+	signal rsp16Data   : std_logic_vector(15 downto 0);
+	signal rsp16Valid  : std_logic;
+	signal rsp16Ready  : std_logic;
 
 	-- 8-bit Response Pipe (16to8 -> FIFO)
-	signal rsp8Data   : std_logic_vector(7 downto 0);
-	signal rsp8Valid  : std_logic;
-	signal rsp8Ready  : std_logic;
+	signal rsp8Data    : std_logic_vector(7 downto 0);
+	signal rsp8Valid   : std_logic;
+	signal rsp8Ready   : std_logic;
 
 	-- Response Pipe output
-	signal rspData    : std_logic_vector(7 downto 0);
-	signal rspValid   : std_logic;
-	signal rspReady   : std_logic;
+	signal rspData     : std_logic_vector(7 downto 0);
+	signal rspValid    : std_logic;
+	signal rspReady    : std_logic;
 
 	-- Pipe interface
-	signal ppReady    : std_logic;
-	signal ppCmd      : MCCmdType;
-	signal ppAddr     : std_logic_vector(22 downto 0);
-	signal ppDataWr   : std_logic_vector(15 downto 0);
-	signal ppDataRd   : std_logic_vector(15 downto 0);
-	signal ppRDV      : std_logic;
+	signal ppReady     : std_logic;
+	signal ppCmd       : MCCmdType;
+	signal ppAddr      : std_logic_vector(22 downto 0);
+	signal ppDataWr    : std_logic_vector(15 downto 0);
+	signal ppDataRd    : std_logic_vector(15 downto 0);
+	signal ppRDV       : std_logic;
 	
 	-- Memory controller interface
-	signal mcAutoMode : std_logic;
-	signal mcReady    : std_logic;
-	signal mcCmd      : MCCmdType;
-	signal mcAddr     : std_logic_vector(22 downto 0);
-	signal mcDataWr   : std_logic_vector(15 downto 0);
-	signal mcDataRd   : std_logic_vector(15 downto 0);
-	signal mcRDV      : std_logic;
+	signal mcAutoMode  : std_logic;
+	signal mcReady     : std_logic;
+	signal mcCmd       : MCCmdType;
+	signal mcAddr      : std_logic_vector(22 downto 0);
+	signal mcDataWr    : std_logic_vector(15 downto 0);
+	signal mcDataRd    : std_logic_vector(15 downto 0);
+	signal mcRDV       : std_logic;
 
 	-- Registers implementing the channels
-	signal reg1       : std_logic_vector(1 downto 0) := "01";
-	signal reg1_next  : std_logic_vector(1 downto 0);
-	signal mdCfg      : std_logic_vector(3 downto 0) := (others => '0');
-	signal mdCfg_next : std_logic_vector(3 downto 0);
+	signal reg1        : std_logic_vector(1 downto 0) := "01";
+	signal reg1_next   : std_logic_vector(1 downto 0);
+	signal mdCfg       : std_logic_vector(3 downto 0) := (others => '0');
+	signal mdCfg_next  : std_logic_vector(3 downto 0);
 
 	-- Trace data
-	--signal count      : unsigned(31 downto 0) := (others => '0');
-	--signal count_next : unsigned(31 downto 0);
-	signal trc72Data  : std_logic_vector(71 downto 0);
-	signal trc72Valid : std_logic;
-	signal trc72Ready : std_logic;
-	signal trc8Data   : std_logic_vector(7 downto 0);
-	signal trc8Valid  : std_logic;
-	signal trc8Ready  : std_logic;
-	signal trcData    : std_logic_vector(7 downto 0);
-	signal trcValid   : std_logic;
-	signal trcReady   : std_logic;
-	signal trcDepth   : std_logic_vector(14 downto 0);
+	--signal count       : unsigned(31 downto 0) := (others => '0');
+	--signal count_next  : unsigned(31 downto 0);
+	signal trc72Data   : std_logic_vector(71 downto 0);
+	signal trc72Valid  : std_logic;
+	signal trc72Ready  : std_logic;
+	signal trc8Data    : std_logic_vector(7 downto 0);
+	signal trc8Valid   : std_logic;
+	signal trc8Ready   : std_logic;
+	signal trcData     : std_logic_vector(7 downto 0);
+	signal trcValid    : std_logic;
+	signal trcReady    : std_logic;
+	signal trcDepth    : std_logic_vector(14 downto 0);
 
 	-- MD register writes
-	signal regAddr    : std_logic_vector(2 downto 0);
-	signal regWrData  : std_logic_vector(15 downto 0);
-	signal regWrValid : std_logic;
-	signal regRdData  : std_logic_vector(15 downto 0);
-	signal regRdReady : std_logic;
-	signal spiRdData  : std_logic_vector(15 downto 0);
-	signal spiWrValid : std_logic;
+	signal regAddr     : std_logic_vector(2 downto 0);
+	signal regWrData   : std_logic_vector(15 downto 0);
+	signal regWrValid  : std_logic;
+	signal regRdData   : std_logic_vector(15 downto 0);
+	signal regRdReady  : std_logic;
+	signal spiRdData   : std_logic_vector(15 downto 0);
+	signal spiWrValid  : std_logic;
 
 	-- SPI send & receive pipes
-	signal sendData   : std_logic_vector(7 downto 0);
-	signal sendValid  : std_logic;
-	signal sendReady  : std_logic;
-	signal recvData   : std_logic_vector(7 downto 0);
-	signal recvValid  : std_logic;
-	signal recvReady  : std_logic;
+	signal sendData    : std_logic_vector(7 downto 0);
+	signal sendValid   : std_logic;
+	signal sendReady   : std_logic;
+	signal recvData    : std_logic_vector(7 downto 0);
+	signal recvValid   : std_logic;
+	signal recvReady   : std_logic;
 
 	-- Readable versions of external driven signals
-	signal mdReset    : std_logic;
+	signal mdReset     : std_logic;
 
 	-- Bits in the host config register reg1
-	constant RESET    : integer := 0;
-	constant TRACE    : integer := 1;
+	constant RESET     : integer := 0;
+	constant TRACE     : integer := 1;
 
 	-- Bits in the MD config register mdCfg
-	constant TURBO    : integer := 0;
-	constant SUPPRESS : integer := 1;
-	constant CHIPSEL  : integer := 2;
+	constant TURBO     : integer := 0;
+	constant SUPPRESS  : integer := 1;
+	constant CHIPSEL   : integer := 2;
 
 	-- Chip-select constants
-	constant FLASH    : std_logic_vector(1 downto 0) := "01";
-	constant SDCARD   : std_logic_vector(1 downto 0) := "10";
-	constant FLASHCS  : integer := 0;
-	constant SDCARDCS : integer := 1;
+	constant FLASH     : std_logic_vector(1 downto 0) := "01";
+	constant SDCARD    : std_logic_vector(1 downto 0) := "10";
+	constant FLASHCS   : integer := 0;
+	constant SDCARDCS  : integer := 1;
 begin
 	-- Infer registers
 	process(clk_in)
@@ -245,7 +245,7 @@ begin
 			reset_in       => '0',
 
 			-- CPU I/O
-			--cpuByteWide_in => '0',
+			cpuByteWide_in => regAddr(0),
 			cpuWrData_in   => regWrData,
 			cpuWrValid_in  => spiWrValid,
 			cpuRdData_out  => spiRdData,
@@ -469,7 +469,7 @@ begin
 		else reg1;
 
 	mdCfg_next <=
-		regWrData(3 downto 0) when regAddr = "000" and regWrValid = '1'
+		regWrData(3 downto 0) when regAddr = "010" and regWrValid = '1'
 		else mdCfg;
 
 	-- Connect channel 0 writes to the SDRAM command pipe and response pipe ready to ch0 read ready
@@ -502,12 +502,12 @@ begin
 		else '1';
 
 	spiWrValid <=
-		'1' when regAddr = "001" and regWrValid = '1'
+		'1' when regAddr(2 downto 1) = "00" and regWrValid = '1'
 		else '0';
 	
 	-- Dummy register reads
 	with regAddr select regRdData <=
-		x"CAFE"   when "000",
+		spiRdData when "000",
 		spiRdData when "001",
 		x"DEAD"   when "010",
 		x"F00D"   when "011",

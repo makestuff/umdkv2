@@ -25,6 +25,7 @@ entity spi_funnel is
 		reset_in       : in  std_logic;
 
 		-- CPU I/O
+		cpuByteWide_in : in  std_logic;
 		cpuWrData_in   : in  std_logic_vector(15 downto 0);
 		cpuWrValid_in  : in  std_logic;
 		cpuRdData_out  : out std_logic_vector(15 downto 0);
@@ -51,14 +52,16 @@ architecture rtl of spi_funnel is
 		S_WAIT_MSB,
 		S_WAIT_LSB
 	);
-	signal sstate      : SStateType := S_WRITE_MSB;
-	signal sstate_next : SStateType;
-	signal rstate      : RStateType := S_WAIT_MSB;
-	signal rstate_next : RStateType;
-	signal lsb         : std_logic_vector(7 downto 0) := (others => '0');
-	signal lsb_next    : std_logic_vector(7 downto 0);
-	signal msb         : std_logic_vector(7 downto 0) := (others => '0');
-	signal msb_next    : std_logic_vector(7 downto 0);
+	signal sstate        : SStateType := S_WRITE_MSB;
+	signal sstate_next   : SStateType;
+	signal rstate        : RStateType := S_WAIT_MSB;
+	signal rstate_next   : RStateType;
+	signal byteWide      : std_logic := '0';
+	signal byteWide_next : std_logic;
+	signal lsb           : std_logic_vector(7 downto 0) := (others => '0');
+	signal lsb_next      : std_logic_vector(7 downto 0);
+	signal readData      : std_logic_vector(15 downto 0) := (others => '0');
+	signal readData_next : std_logic_vector(15 downto 0);
 begin
 	-- Infer registers
 	process(clk_in)
@@ -68,22 +71,25 @@ begin
 				sstate <= S_WRITE_MSB;
 				rstate <= S_WAIT_MSB;
 				lsb <= (others => '0');
-				msb <= (others => '0');
+				readData <= (others => '0');
+				byteWide <= '0';
 			else
 				sstate <= sstate_next;
 				rstate <= rstate_next;
 				lsb <= lsb_next;
-				msb <= msb_next;
+				readData <= readData_next;
+				byteWide <= byteWide_next;
 			end if;
 		end if;
 	end process;
 
 	-- Send state machine
-	process(sstate, lsb, cpuWrData_in, cpuWrValid_in, sendReady_in)
+	process(sstate, lsb, cpuWrData_in, cpuWrValid_in, sendReady_in, cpuByteWide_in, byteWide)
 	begin
 		sstate_next <= sstate;
 		sendValid_out <= '0';
 		lsb_next <= lsb;
+		byteWide_next <= byteWide;
 		case sstate is
 			-- Now send the LSB to SPI and return:
 			when S_WRITE_LSB =>
@@ -96,36 +102,52 @@ begin
 			-- When the CPU writes a word, send the MSB to SPI:
 			when others =>
 				sendData_out <= cpuWrData_in(15 downto 8);
-				sendValid_out <= cpuWrValid_in;
-				if ( cpuWrValid_in = '1' and sendReady_in = '1' ) then
-					lsb_next <= cpuWrData_in(7 downto 0);
-					sstate_next <= S_WRITE_LSB;
+				if ( cpuByteWide_in = '1' ) then
+					-- We're sending single bytes rather than 16-bit words
+					if ( cpuWrValid_in = '1' and sendReady_in = '1' ) then
+						sendValid_out <= '1';
+						byteWide_next <= '1';
+					end if;
+				else
+					-- We're sending 16-bit words rather than single bytes
+					if ( cpuWrValid_in = '1' and sendReady_in = '1' ) then
+						sstate_next <= S_WRITE_LSB;
+						sendValid_out <= '1';
+						lsb_next <= cpuWrData_in(7 downto 0);
+						byteWide_next <= '0';
+					end if;
 				end if;
 		end case;
 	end process;
 
 	-- Receive state machine
-	process(rstate, msb, recvData_in, recvValid_in, cpuRdReady_in)
+	process(rstate, readData, recvData_in, recvValid_in, cpuRdReady_in, byteWide)
 	begin
 		rstate_next <= rstate;
-		msb_next <= msb;
+		readData_next <= readData;
 		case rstate is
 			-- Wait for the LSB to arrive:
 			when S_WAIT_LSB =>
-				recvReady_out <= cpuRdReady_in;  -- ready for data from 8-bit side
-				cpuRdData_out <= msb & recvData_in;
+				recvReady_out <= '1';  -- ready for data from 8-bit side
 				if ( recvValid_in = '1' and cpuRdReady_in = '1' ) then
 					rstate_next <= S_WAIT_MSB;
+					readData_next(7 downto 0) <= recvData_in;
 				end if;
 				
-			-- Wait for the MSB to arrive:
+			-- When bytes arrive over SPI, present them (as bytes or words) to the CPU
 			when others =>
 				recvReady_out <= '1';  -- ready for data from 8-bit side
-				cpuRdData_out <= (others => 'X');
 				if ( recvValid_in = '1' ) then
-					msb_next <= recvData_in;
-					rstate_next <= S_WAIT_LSB;
+					if ( byteWide = '1' ) then
+						-- We're receiving single bytes rather than 16-bit words
+						readData_next <= recvData_in & "XXXXXXXX";
+					else
+						-- We're receiving 16-bit words rather than single bytes
+						rstate_next <= S_WAIT_LSB;
+						readData_next(15 downto 8) <= recvData_in;
+					end if;
 				end if;
 		end case;
 	end process;
+	cpuRdData_out <= readData;
 end architecture;

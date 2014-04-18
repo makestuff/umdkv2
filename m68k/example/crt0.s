@@ -152,29 +152,54 @@ interrupt:
 	
 readBlock:
 	movem.l a0-a1, -(sp)
-	lea	0xA13002, a0
+	lea	0xA13000, a0
 	lea	0xFF1000, a1
-	move.w	#(TURBO|SUPPRESS|FLASH), -2(a0)
-	move.w	#0x0306, (a0)		/* 03 = read command; 06 = page 6 */
-	move.w	#0x0000, (a0)		/* address 0x60000: top 128KiB */
-	move.w	#(TURBO|FLASH), -2(a0)
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w	#0xFFFF, (a0)
-	move.w	(a0), (a1)+
-	move.w  #0, -2(a0)
+
+	/* Do some byte reads */
+	move.w	#(TURBO|FLASH), 4(a0)
+	move.b	#0x03, 2(a0)		/* 03 = read command */
+	move.b	#0x06, 2(a0)		/* 06 = page 6 */
+	move.b	#0x00, 2(a0)		/* address 0x60000: top 128KiB */
+	move.b	#0x00, 2(a0)
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.b	#0xFF, 2(a0)
+	move.b	2(a0), (a1)+
+	move.w  #0, 4(a0)
+
+	/* Do some word reads */
+	move.w	#(TURBO|FLASH), 4(a0)
+	move.w	#0x0306, 0(a0)		/* 03 = read command; 06 = page 6 */
+	move.w	#0x0000, 0(a0)		/* address 0x60000: top 128KiB */
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w	#0xFFFF, 0(a0)
+	move.w	0(a0), (a1)+
+	move.w  #0, 4(a0)
 	movem.l (sp)+, a0-a1
 	rts
 
