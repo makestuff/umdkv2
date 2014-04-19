@@ -35,6 +35,16 @@ static void printRegs(const struct Registers *regs) {
 	printf("SR=%08X  PC=%08X\n", regs->sr, regs->pc);
 }
 
+TEST(foo) {
+	struct Registers regs;
+	int retVal;
+	retVal = umdkDirectWriteFile(g_handle, 0x000000, "../monitor/boot.bin", NULL);
+	CHECK_EQUAL(0, retVal);
+	retVal = umdkRemoteAcquire(g_handle, &regs, NULL);
+	CHECK_EQUAL(0, retVal);
+	printRegs(&regs);
+}
+
 TEST(Range_testDirectWriteBytesValidations) {
 	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE};
 	int retVal;
@@ -55,9 +65,9 @@ TEST(Range_testDirectWriteBytesValidations) {
 	retVal = umdkDirectWriteBytes(g_handle, MONITOR-2, 4, bytes, NULL);
 	CHECK_EQUAL(1, retVal);
 
-	// Write two bytes to bottom of page 8 (should work)
-	retVal = umdkDirectWriteBytes(g_handle, MONITOR, 2, bytes, NULL);
-	CHECK_EQUAL(0, retVal);
+	// Write two bytes to bottom of page 8 (should work) [comment out to avoid corrupting monitor]
+	//retVal = umdkDirectWriteBytes(g_handle, MONITOR, 2, bytes, NULL);
+	//CHECK_EQUAL(0, retVal);
 
 	// Write two bytes to top of page 8 (should work)
 	retVal = umdkDirectWriteBytes(g_handle, MONITOR+512*1024-2, 2, bytes, NULL);
@@ -80,11 +90,11 @@ TEST(Range_testDirectReadBytesValidations) {
 	uint8 bytes[4];
 	int retVal;
 
-	// Read two bytes to bottom of page 0 (should work)
+	// Read two bytes from bottom of page 0 (should work)
 	retVal = umdkDirectReadBytes(g_handle, 0x000000, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
-	// Read two bytes to top of page 0 (should work)
+	// Read two bytes from top of page 0 (should work)
 	retVal = umdkDirectReadBytes(g_handle, 0x07FFFE, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
@@ -96,11 +106,11 @@ TEST(Range_testDirectReadBytesValidations) {
 	retVal = umdkDirectReadBytes(g_handle, MONITOR-2, 4, bytes, NULL);
 	CHECK_EQUAL(1, retVal);
 
-	// Read two bytes to bottom of page 8 (should work)
+	// Read two bytes from bottom of page 8 (should work)
 	retVal = umdkDirectReadBytes(g_handle, MONITOR, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
-	// Read two bytes to top of page 8 (should work)
+	// Read two bytes from top of page 8 (should work)
 	retVal = umdkDirectReadBytes(g_handle, MONITOR+512*1024-2, 2, bytes, NULL);
 	CHECK_EQUAL(0, retVal);
 
@@ -109,7 +119,7 @@ TEST(Range_testDirectReadBytesValidations) {
 	CHECK_EQUAL(1, retVal);
 }
 
-TEST(Range_testStartMonitor) {
+/*TEST(Range_testStartMonitor) {
 	int retVal;
 	uint8 buf[0x8000];
 	uint8 *exampleData;
@@ -117,7 +127,7 @@ TEST(Range_testStartMonitor) {
 	struct Registers regs;
 
 	// Put MD in RESET
-	buf[0] = 1;
+	buf[0] = 5;
 	retVal = flWriteChannel(g_handle, 1, 1, buf, NULL);
 	CHECK_EQUAL(0, retVal);
 
@@ -190,7 +200,7 @@ TEST(Range_testStartMonitor) {
 		CHECK_ARRAY_EQUAL(exampleData, buf, exampleLength);
 		flFreeFile(exampleData);
 	}
-}
+}*/
 
 TEST(Range_testDirectReadNonAligned) {
 	const uint8 bytes[] = {0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xF0, 0x0D};
@@ -348,7 +358,6 @@ TEST(Range_testIndirectWriteRead) {
 	CHECK_EQUAL(0, retVal);
 	CHECK_ARRAY_EQUAL(expected, buf, 8);
 }
-
 
 TEST(Range_testCont) {
 	int retVal;
