@@ -114,7 +114,7 @@ architecture structural of umdkv2 is
 	signal mcRDV       : std_logic;
 
 	-- Registers implementing the channels
-	signal reg1        : std_logic_vector(1 downto 0) := "01";
+	signal reg1        : std_logic_vector(1 downto 0) := "00";
 	signal reg1_next   : std_logic_vector(1 downto 0);
 	signal mdCfg       : std_logic_vector(3 downto 0) := (others => '0');
 	signal mdCfg_next  : std_logic_vector(3 downto 0);
@@ -176,7 +176,7 @@ begin
 	begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
-				reg1 <= "01";
+				reg1 <= "00";
 				mdCfg <= (others => '0');
 				mapRam <= '0';
 				--count <= (others => '0');
