@@ -1,6 +1,5 @@
 TOOLS = $(HOME)/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
-AS_FLAGS = -D -mcpu=68000 -march=68000 --traditional-format --register-prefix-optional
-#-alh
+AS_FLAGS = -D -mcpu=68000 -march=68000 --bitwise-or --traditional-format --register-prefix-optional -L -g -al
 
 all: boot.bin monitor.bin test.bin
 
