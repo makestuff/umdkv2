@@ -118,6 +118,8 @@ architecture structural of umdkv2 is
 	signal reg1_next   : std_logic_vector(1 downto 0);
 	signal mdCfg       : std_logic_vector(3 downto 0) := (others => '0');
 	signal mdCfg_next  : std_logic_vector(3 downto 0);
+	signal mapRam      : std_logic := '0';
+	signal mapRam_next : std_logic;
 
 	-- Trace data
 	--signal count       : unsigned(31 downto 0) := (others => '0');
@@ -176,10 +178,12 @@ begin
 			if ( reset_in = '1' ) then
 				reg1 <= "01";
 				mdCfg <= (others => '0');
+				mapRam <= '0';
 				--count <= (others => '0');
 			else
 				reg1 <= reg1_next;
 				mdCfg <= mdCfg_next;
+				mapRam <= mapRam_next;
 				--count <= count_next;
 			end if;
 		end if;
@@ -433,7 +437,8 @@ begin
 			regWrData_out   => regWrData,
 			regWrValid_out  => regWrValid,
 			regRdData_in    => regRdData,
-			regRdStrobe_out => regRdStrobe
+			regRdStrobe_out => regRdStrobe,
+			regMapRam_in    => mapRam
 		);
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
@@ -508,6 +513,11 @@ begin
 	spiRdStrobe <=
 		'1' when regAddr(2 downto 1) = "00" and regRdStrobe = '1'
 		else '0';
+
+	mapRam_next <=
+		'0' when mdReset = '1'
+		else '1' when regAddr = "010" and regWrValid = '1' and regWrData = x"0000"
+		else mapRam;
 	
 	-- Dummy register reads
 	with regAddr select regRdData <=

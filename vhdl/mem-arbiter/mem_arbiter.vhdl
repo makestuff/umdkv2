@@ -63,7 +63,8 @@ entity mem_arbiter is
 		regWrData_out   : out std_logic_vector(15 downto 0);
 		regWrValid_out  : out std_logic;
 		regRdData_in    : in  std_logic_vector(15 downto 0);
-		regRdStrobe_out : out std_logic
+		regRdStrobe_out : out std_logic;
+		regMapRam_in    : in  std_logic
 	);
 end entity;
 
@@ -133,6 +134,7 @@ architecture rtl of mem_arbiter is
 		"01000", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
 	);
 	signal memBank_next : BankType;
+	signal bootInsn     : std_logic_vector(15 downto 0);
 
 	-- Synchronise MegaDrive signals to sysClk
 	signal mdAS_sync    : std_logic := '1';
@@ -190,7 +192,7 @@ begin
 			mdOE_sync, mdDSW_sync, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
 			mcReady_in, mcData_in, mcRDV_in,
 			ppCmd_in, ppAddr_in, ppData_in,
-			memBank, regRdData_in,
+			regMapRam_in, bootInsn, memBank, regRdData_in,
 			count48, traceEnable_in
 		)
 		-- Function to generate SDRAM physical address using MD address and memBank (SSF2) regs
@@ -261,9 +263,14 @@ begin
 			when R_READ_OWNED_WAIT =>
 				if ( mcRDV_in = '1' ) then
 					rstate_next <= R_READ_OWNED_NOP1;
-					dataReg_next <= mcData_in;
+					if ( regMapRam_in = '1' ) then
+						dataReg_next <= mcData_in;
+						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mcData_in;
+					else
+						dataReg_next <= bootInsn;
+						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & bootInsn;
+					end if;
 					genRDV <= '1';
-					traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mcData_in;
 					traceValid_out <= traceEnable_in;
 				end if;
 
@@ -499,6 +506,51 @@ begin
 		end case;
 	end process;
 
+	-- Boot ROM - just load the bootblock from flash into onboard RAM and start it running
+	with addrReg(4 downto 0) select bootInsn <=
+		x"0000" when "00000", -- initial SSP
+		x"0000" when "00001",
+		x"0000" when "00010", -- initial PC
+		x"0008" when "00011",
+		x"41F9" when "00100", -- lea 0xA13000, a0
+		x"00A1" when "00101",
+		x"3000" when "00110",
+		x"43F9" when "00111", -- lea 0xFF0000, a1
+		x"00FF" when "01000",
+		x"0000" when "01001",
+		x"317C" when "01010", -- move.w #(TURBO|FLASH), 4(a0)
+		x"0005" when "01011",
+		x"0004" when "01100",
+		x"30BC" when "01101", -- move.w #0x0306, (a0)
+		x"0306" when "01110",
+		x"30BC" when "01111", -- move.w #0x0000, (a0)
+		x"0000" when "10000",
+		x"30BC" when "10001", -- move.w #0xFFFF, (a0)
+		x"FFFF" when "10010",
+		x"707F" when "10011", -- moveq #127, d0 ; copy 128 words = 256 bytes
+		x"32D0" when "10100", -- move.w (a0), (a1)+
+		x"51C8" when "10101", -- dbra d0, *-4
+		x"FFFC" when "10110",
+		x"4EF9" when "10111", -- jmp 0xFF0000
+		x"00FF" when "11000",
+		x"0000" when "11001",
+		(others => 'X') when others;
+
+	-- A verifiable test bootblock can be installed like this:
+	--
+	-- $ printf '\x31\x7C\x00\x00\x00\x04\x33\xFC\x60\xFE\x00\x40\x00\x00\x4E\xF9\x00\x40\x00\x00' > bra.bin
+	-- $ $HOME/makestuff/apps/flcli/lin.x64/rel/flcli -v 1d50:602b:0002 -p J:A7A0A3A1:spi-talk.xsvf
+	-- $ $HOME/makestuff/apps/gordon/lin.x64/rel/gordon -v 1d50:602b:0002 -t indirect:1 -w bra.bin:0x60000
+	-- $ $HOME/makestuff/apps/gordon/lin.x64/rel/gordon -v 1d50:602b:0002 -t indirect:1 -r foo.bin:0x60000:256
+	-- $ dis68 foo.bin 0 3
+	-- 0x000000  move.w #0, 4(a0)
+	-- 0x000006  move.w #0x60FE, 0x400000 ; opcode for bra.s -2
+	-- 0x00000E  jmp 0x400000
+	-- 
+	-- It consists of the opcodes to deselect the flash (and thereby map in the SDRAM), then write
+	-- the opcode for bra.s -2 to 0x400000 and jump to it. Reads from onboard RAM don't show on the
+	-- trace, but you can see the infinite bra.s -2 loop executing OK.
+	
 	mdDTACK_out <= '0';  -- for now, just rely on MD's auto-DTACK
 	count48_next <= count48 + 1;
 	

@@ -1375,6 +1375,7 @@ uint32 disassemble(struct disassemble_info *di, const uint8 *baseAddress, uint32
 int main(int argc, const char *argv[]) {
 	struct disassemble_info di;
 	const uint8 *rom;
+	char *endPtr = NULL;
 	uint32 romLength;
 	uint32 address;
 	uint32 numLines;
@@ -1389,8 +1390,8 @@ int main(int argc, const char *argv[]) {
 		fprintf(stderr, "File not found\\n");
 		exit(1);
 	}
-	address = strtoul(argv[2], NULL, 0);
-	if ( !address ) {
+	address = strtoul(argv[2], &endPtr, 0);
+	if ( endPtr == argv[2] ) {
 		fprintf(stderr, "Address \\"%s\\" cannot be parsed\\n", argv[2]);
 		exit(1);
 	}
