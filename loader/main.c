@@ -422,9 +422,39 @@ int main(int argc, const char *argv[]) {
 		uint32 actualLength;
 		uint8 scrapData[16400];
 		size_t scrapSize;
-		printf("Dumping execution trace to %s\n", execTrace);
-		file = fopen(execTrace, "wb");
+		size_t numBlocks = 10;
+		const char *ptr = execTrace;
+		char ch = *ptr;
+		bool haveCount = false;
+		while ( ch && ch != ':' ) {
+			ch = *++ptr;
+		}
+		if ( ch == ':' ) {
+			haveCount = true;
+			fileNameLength = ptr - execTrace;
+			ptr++;
+			numBlocks = (size_t)strtoul(ptr, (char**)&ptr, 0);
+			if ( *ptr != '\0' ) {
+				fprintf(stderr, "Invalid argument to option -t <file:blocks>\n");
+				FAIL(15, cleanup);
+			}
+			
+			filePart = malloc(fileNameLength + 1);
+			if ( !filePart ) {
+				fprintf(stderr, "Memory allocation error!\n");
+				FAIL(14, cleanup);
+			}
+			strncpy(filePart, execTrace, fileNameLength);
+			filePart[fileNameLength] = '\0';
+			file = fopen(filePart, "wb");
+			free(filePart);
+			filePart = NULL;
+		} else {
+			file = fopen(execTrace, "wb");
+		}
+
 		CHECK_STATUS(!file, 26, cleanup);
+		printf("Dumping execution trace to %s\n", execTrace);
 		sigRegisterHandler();
 		status = flSelectConduit(handle, 1, &error);
 		CHECK_STATUS(status, 27, cleanup);
@@ -470,8 +500,12 @@ int main(int argc, const char *argv[]) {
 			CHECK_STATUS(status, 30, cleanup);
 			fwrite(recvData, 1, actualLength, file);
 			printf(".");
-		} while ( !sigIsRaised() );
-		printf("\nCaught SIGINT, quitting...\n");
+		} while ( !(sigIsRaised() || (haveCount && --numBlocks == 0)) );
+		if ( haveCount ) {
+			printf("\nFinished!\n");
+		} else {
+			printf("\nCaught SIGINT, quitting...\n");
+		}
 		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, &error);
 		CHECK_STATUS(status, 31, cleanup);
 		fwrite(recvData, 1, actualLength, file);

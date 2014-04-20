@@ -73,13 +73,16 @@ int main(int argc, char *argv[]) {
 		}
 		if ( addr >= romSize ) {
 			printf("%20llu %s %06X %04X XXXX\n", time, charFlags, addr, readWord);
+			//printf("%s %06X %04X XXXX\n", charFlags, addr, readWord);
 		} else {
 			romWord = romData[addr] << 8;
 			romWord |= romData[addr+1];
 			if ( romWord == readWord ) {
 				printf("%20llu %s %06X %04X %04X\n", time, charFlags, addr, readWord, romWord);
+				//printf("%s %06X %04X %04X\n", charFlags, addr, readWord, romWord);
 			} else {
 				printf("%20llu %s %06X %04X %04X *\n", time, charFlags, addr, readWord, romWord);
+				//printf("%s %06X %04X %04X *\n", charFlags, addr, readWord, romWord);
 			}
 		}
 		bytesRead = fread(line, 1, 9, file);

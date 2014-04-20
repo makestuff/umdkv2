@@ -53,9 +53,7 @@ boot:
 	move.l	#0x53454741, 0xA14000	/* write "SEGA" to TMSS register */
 noTMSS:
 	lea	monBase, a1
-	move.w	#49999, d0
-foo:	move.w	(a1), d1		/* dummy read to force refresh */
-	dbra	d0, foo
+	move.w	#0x0000, 0x400(a1)
 	move.w	#(bmTURBO | bmFLASH), SPICON(a0)
 	move.w	#0x0306, SPIDATW(a0)	/* load 0x200 words (1024 bytes) of */
 	move.w	#0x0100, SPIDATW(a0)	/* monitor code from flash address  */

@@ -101,19 +101,31 @@ begin
 				
 			-- When the CPU writes a word, send the MSB to SPI:
 			when others =>
-				sendData_out <= cpuWrData_in(15 downto 8);
+				sendData_out <= x"55";
 				if ( cpuByteWide_in = '1' ) then
 					-- We're sending single bytes rather than 16-bit words
-					if ( cpuWrValid_in = '1' or cpuRdStrobe_in = '1' ) then
+					if ( cpuWrValid_in = '1' ) then
+						sendData_out <= cpuWrData_in(15 downto 8);
+						sendValid_out <= '1';
+						byteWide_next <= '1';
+					elsif ( cpuRdStrobe_in = '1' ) then
+						sendData_out <= x"FF";
 						sendValid_out <= '1';
 						byteWide_next <= '1';
 					end if;
 				else
 					-- We're sending 16-bit words rather than single bytes
-					if ( cpuWrValid_in = '1' or cpuRdStrobe_in = '1' ) then
+					if ( cpuWrValid_in = '1' ) then
 						sstate_next <= S_WRITE_LSB;
+						sendData_out <= cpuWrData_in(15 downto 8);
 						sendValid_out <= '1';
 						lsb_next <= cpuWrData_in(7 downto 0);
+						byteWide_next <= '0';
+					elsif ( cpuRdStrobe_in = '1' ) then
+						sstate_next <= S_WRITE_LSB;
+						sendData_out <= x"FF";
+						sendValid_out <= '1';
+						lsb_next <= x"FF";
 						byteWide_next <= '0';
 					end if;
 				end if;
@@ -128,7 +140,6 @@ begin
 		case rstate is
 			-- Wait for the LSB to arrive:
 			when S_WAIT_LSB =>
-				recvReady_out <= '1';  -- ready for data from 8-bit side
 				if ( recvValid_in = '1' ) then
 					rstate_next <= S_WAIT_MSB;
 					readData_next(7 downto 0) <= recvData_in;
@@ -136,11 +147,10 @@ begin
 				
 			-- When bytes arrive over SPI, present them (as bytes or words) to the CPU
 			when others =>
-				recvReady_out <= '1';  -- ready for data from 8-bit side
 				if ( recvValid_in = '1' ) then
 					if ( byteWide = '1' ) then
 						-- We're receiving single bytes rather than 16-bit words
-						readData_next <= recvData_in & "XXXXXXXX";
+						readData_next <= recvData_in & x"AA"; --"XXXXXXXX";
 					else
 						-- We're receiving 16-bit words rather than single bytes
 						rstate_next <= S_WAIT_LSB;
@@ -150,4 +160,5 @@ begin
 		end case;
 	end process;
 	cpuRdData_out <= readData;
+	recvReady_out <= '1';  -- ready for data from 8-bit side
 end architecture;

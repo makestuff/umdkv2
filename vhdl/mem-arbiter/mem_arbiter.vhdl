@@ -143,7 +143,8 @@ architecture rtl of mem_arbiter is
 	signal mdAddr_sync  : std_logic_vector(22 downto 0) := (others => '0');
 	signal mdData_sync  : std_logic_vector(15 downto 0) := (others => '0');
 	constant TR_RD      : std_logic_vector(1 downto 0) := "11";
-
+	constant TR_WB      : std_logic_vector(1 downto 0) := "00";
+	
 	-- Flag to allow arbiter state machine to kick bus-controller
 	signal genRDV       : std_logic;
 begin
@@ -232,6 +233,12 @@ begin
 		-- Flag for read data valid
 		genRDV <= '0';
 
+		-- Can inject dummy trace data to debug startup hangs
+		--if ( count48(15 downto 0) = x"FFFF" ) then
+		--	traceData_out <= std_logic_vector(count48) & '1' & TR_WB & x"00000" & "000" & x"CAFE";
+		--	traceValid_out <= traceEnable_in;
+		--end if;
+		
 		case rstate is
 			-- -------------------------------------------------------------------------------------
 			-- Whilst the MD is in reset, the SDRAM does auto-refresh, and the host has complete

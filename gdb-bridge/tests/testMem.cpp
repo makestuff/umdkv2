@@ -38,7 +38,11 @@ static void printRegs(const struct Registers *regs) {
 TEST(foo) {
 	struct Registers regs;
 	int retVal;
-	retVal = umdkDirectWriteFile(g_handle, 0x000000, "../monitor/boot.bin", NULL);
+	retVal = umdkDirectWriteLong(g_handle, VB_VEC, MONITOR, NULL);
+	CHECK_EQUAL(0, retVal);
+	retVal = umdkDirectWriteLong(g_handle, IL_VEC, MONITOR, NULL);
+	CHECK_EQUAL(0, retVal);
+	retVal = umdkDirectWriteLong(g_handle, TR_VEC, MONITOR, NULL);
 	CHECK_EQUAL(0, retVal);
 	retVal = umdkRemoteAcquire(g_handle, &regs, NULL);
 	CHECK_EQUAL(0, retVal);
