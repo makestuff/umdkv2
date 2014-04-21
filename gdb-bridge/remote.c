@@ -136,6 +136,8 @@ static int cmdReadRegisters(int conn, struct FLContext *handle) {
 	return write(conn, response, 2+8*18+3);
 }
 
+void printMessage(const unsigned char *data, int length);
+
 // Process GDB write-memory command
 static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 	uint32 address, length, numBytes;
@@ -155,11 +157,14 @@ static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 		*binary++ = byte;
 	}
 	address &= 0x00FFFFFF;
+	//printf("cmdWriteMemory(): %d bytes at 0x%06X:\n", length, address);
+	//printMessage(ioBuf, length);
 	if ( address & 1 || length & 1 ) {
 		printf("Nonaligned write: %du bytes to 0x%08X\n", length, address);
+	} else {
+		status = umdkWriteBytes(handle, address, length, ioBuf, &g_error);
+		CHKERR(status);
 	}
-	status = umdkWriteBytes(handle, address, length, ioBuf, &g_error);
-	CHKERR(status);
 	return write(conn, VL(RESPONSE_OK));
 }
 

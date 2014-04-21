@@ -31,6 +31,9 @@ ct-ng m68k-unknown-elf
 patch .config <<EOF
 --- config.old	2014-04-02 12:40:43.552014000 +0100
 +++ config.new	2014-04-02 12:44:53.896750988 +0100
+@@ -99 +99 @@
+-CT_ARCH_CPU="cpu32"
++CT_ARCH_CPU="68000"
 @@ -201,2 +201,2 @@
 -# CT_ARCH_BINFMT_ELF is not set
 -CT_ARCH_BINFMT_FLAT=y

@@ -52,6 +52,13 @@ static void setNonBlocking(int conn, bool nonBlocking) {
 	} else {
 		return false;
 	}
+}
+
+void printMessage(const unsigned char *data, int length) {
+	while ( length-- ) {
+		printf("%02X", *data++);
+	}
+	printf("\n");
 }*/
 
 static int handleConnection(int conn, struct FLContext *handle) {
@@ -61,6 +68,7 @@ static int handleConnection(int conn, struct FLContext *handle) {
 	bytesRead = readMessage(conn, buffer, SOCKET_BUFFER_SIZE);
 	while ( bytesRead > 0 ) {
 		buffer[bytesRead] = 0;
+		//printf("msg: ");printMessage((const unsigned char *)buffer, bytesRead);
 		setNonBlocking(conn, true);
 		processMessage(buffer, bytesRead, conn, handle);
 		setNonBlocking(conn, false);
