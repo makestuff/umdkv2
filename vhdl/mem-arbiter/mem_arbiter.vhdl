@@ -69,51 +69,51 @@ entity mem_arbiter is
 end entity;
 
 architecture rtl of mem_arbiter is
-	type RStateType is (
-		R_RESET,  -- MD in reset, host has access to SDRAM
-		R_IDLE,   -- wait for mdOE_sync to go low when A22='0', indicating a MD cart read
+	type StateType is (
+		S_RESET,  -- MD in reset, host has access to SDRAM
+		S_IDLE,   -- wait for mdOE_sync to go low when A22='0', indicating a MD cart read
 
 		-- Owned read
-		R_READ_OWNED_WAIT,
-		R_READ_OWNED_NOP1,
-		R_READ_OWNED_NOP2,
-		R_READ_OWNED_NOP3,
-		R_READ_OWNED_NOP4,
-		R_READ_OWNED_REFRESH,
-		R_READ_OWNED_FINISH,
+		S_READ_OWNED_WAIT,
+		S_READ_OWNED_NOP1,
+		S_READ_OWNED_NOP2,
+		S_READ_OWNED_NOP3,
+		S_READ_OWNED_NOP4,
+		S_READ_OWNED_REFRESH,
+		S_READ_OWNED_FINISH,
 
 		-- Foreign read
-		R_READ_OTHER,
+		S_READ_OTHER,
 
 		-- Owned write
-		R_WRITE_OWNED_NOP1,
-		R_WRITE_OWNED_NOP2,
-		R_WRITE_OWNED_NOP3,
-		R_WRITE_OWNED_NOP4,
-		R_WRITE_OWNED_EXEC,
-		R_WRITE_OWNED_FINISH,
+		S_WRITE_OWNED_NOP1,
+		S_WRITE_OWNED_NOP2,
+		S_WRITE_OWNED_NOP3,
+		S_WRITE_OWNED_NOP4,
+		S_WRITE_OWNED_EXEC,
+		S_WRITE_OWNED_FINISH,
 
 		-- Foreign write
-		R_WRITE_OTHER_NOP1,
-		R_WRITE_OTHER_NOP2,
-		R_WRITE_OTHER_NOP3,
-		R_WRITE_OTHER_NOP4,
-		R_WRITE_OTHER_EXEC,
-		R_WRITE_OTHER_FINISH,
+		S_WRITE_OTHER_NOP1,
+		S_WRITE_OTHER_NOP2,
+		S_WRITE_OTHER_NOP3,
+		S_WRITE_OTHER_NOP4,
+		S_WRITE_OTHER_EXEC,
+		S_WRITE_OTHER_FINISH,
 
 		-- Register write
-		R_WRITE_REG_NOP1,
-		R_WRITE_REG_NOP2,
-		R_WRITE_REG_NOP3,
-		R_WRITE_REG_NOP4,
-		R_WRITE_REG_EXEC,
-		R_WRITE_REG_FINISH
+		S_WRITE_REG_NOP1,
+		S_WRITE_REG_NOP2,
+		S_WRITE_REG_NOP3,
+		S_WRITE_REG_NOP4,
+		S_WRITE_REG_EXEC,
+		S_WRITE_REG_FINISH
 	);
 	type BankType is array (0 to 15) of std_logic_vector(4 downto 0);
 	
 	-- Registers
-	signal rstate       : RStateType := R_RESET;
-	signal rstate_next  : RStateType;
+	signal state        : StateType := S_RESET;
+	signal state_next   : StateType;
 	signal dataReg      : std_logic_vector(15 downto 0) := (others => '0');
 	signal dataReg_next : std_logic_vector(15 downto 0);
 	signal addrReg      : std_logic_vector(22 downto 0) := (others => '0');
@@ -143,7 +143,7 @@ begin
 	begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
-				rstate <= R_RESET;
+				state <= S_RESET;
 				dataReg <= (others => '0');
 				addrReg <= (others => '0');
 				mdAddr_sync <= (others => '0');
@@ -158,7 +158,7 @@ begin
 					"11111", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
 				);
 			else
-				rstate <= rstate_next;
+				state <= state_next;
 				dataReg <= dataReg_next;
 				addrReg <= addrReg_next;
 				mdAddr_sync <= mdAddr_in;
@@ -177,7 +177,7 @@ begin
 	-- ##                           State machine to control the SDRAM                            ##
 	-- #############################################################################################
 	process(
-			rstate, dataReg, addrReg,
+			state, dataReg, addrReg,
 			mdOE_sync, mdDSW_sync, mdAddr_sync, mdData_sync, mdAS_sync, mdAS, mdReset_in,
 			mcReady_in, mcData_in, mcRDV_in,
 			ppCmd_in, ppAddr_in, ppData_in,
@@ -191,7 +191,7 @@ begin
 		end function;
 	begin
 		-- Local register defaults
-		rstate_next <= rstate;
+		state_next <= state;
 		dataReg_next <= dataReg;
 		addrReg_next <= addrReg;
 		mdAS_next <= mdAS;
@@ -222,12 +222,12 @@ begin
 		mdData_io <= (others => 'Z');
 		mdDriveBus_out <= '0';
 
-		case rstate is
+		case state is
 			-- -------------------------------------------------------------------------------------
 			-- Whilst the MD is in reset, the SDRAM does auto-refresh, and the host has complete
 			-- control over it.
 			--
-			when R_RESET =>
+			when S_RESET =>
 				-- Enable auto-refresh
 				mcAutoMode_out <= '1';
 
@@ -243,18 +243,18 @@ begin
 
 				-- Proceed when host releases MD from reset
 				if ( mdReset_in = '0' ) then
-					rstate_next <= R_IDLE;
+					state_next <= S_IDLE;
 				end if;
 
 			-- -------------------------------------------------------------------------------------
 			-- Wait until the in-progress owned read completes, then register the result, send to
 			-- the trace FIFO and proceed.
 			--
-			when R_READ_OWNED_WAIT =>
+			when S_READ_OWNED_WAIT =>
 				mdData_io <= mcData_in;
 				mdDriveBus_out <= '1';
 				if ( mcRDV_in = '1' ) then
-					rstate_next <= R_READ_OWNED_NOP1;
+					state_next <= S_READ_OWNED_NOP1;
 					if ( regMapRam_in = '1' ) then
 						dataReg_next <= mcData_in;
 						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mcData_in;
@@ -267,50 +267,50 @@ begin
 
 			-- Give the host enough time for one I/O cycle, if it wants it.
 			--
-			when R_READ_OWNED_NOP1 =>
+			when S_READ_OWNED_NOP1 =>
 				mdData_io <= dataReg;
 				mdDriveBus_out <= '1';
 				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
-				rstate_next <= R_READ_OWNED_NOP2;
-			when R_READ_OWNED_NOP2 =>
+				state_next <= S_READ_OWNED_NOP2;
+			when S_READ_OWNED_NOP2 =>
 				mdData_io <= dataReg;
 				mdDriveBus_out <= '1';
-				rstate_next <= R_READ_OWNED_NOP3;
-			when R_READ_OWNED_NOP3 =>
+				state_next <= S_READ_OWNED_NOP3;
+			when S_READ_OWNED_NOP3 =>
 				mdData_io <= dataReg;
 				mdDriveBus_out <= '1';
-				rstate_next <= R_READ_OWNED_NOP4;
-			when R_READ_OWNED_NOP4 =>
+				state_next <= S_READ_OWNED_NOP4;
+			when S_READ_OWNED_NOP4 =>
 				mdData_io <= dataReg;
 				mdDriveBus_out <= '1';
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
-				rstate_next <= R_READ_OWNED_REFRESH;
+				state_next <= S_READ_OWNED_REFRESH;
 				
 			-- Start a refresh cycle, then wait for it to complete.
 			--
-			when R_READ_OWNED_REFRESH =>
+			when S_READ_OWNED_REFRESH =>
 				mdData_io <= dataReg;
 				mdDriveBus_out <= '1';
-				rstate_next <= R_READ_OWNED_FINISH;
+				state_next <= S_READ_OWNED_FINISH;
 				mcCmd_out <= MC_REF;
-			when R_READ_OWNED_FINISH =>
+			when S_READ_OWNED_FINISH =>
 				mdData_io <= dataReg;
 				mdDriveBus_out <= '1';
 				if ( mcReady_in = '1' and mdOE_sync = '1' ) then
-					rstate_next <= R_IDLE;
+					state_next <= S_IDLE;
 				end if;
 
 			-- -------------------------------------------------------------------------------------
 			-- Wait for the in-progress foreign read to complete, then send to the trace FIFO and go
-			-- back to R_IDLE.
+			-- back to S_IDLE.
 			--
-			when R_READ_OTHER =>
+			when S_READ_OTHER =>
 				if ( mdOE_sync = '1' ) then
-					rstate_next <= R_IDLE;
+					state_next <= S_IDLE;
 					traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mdData_sync;
 					traceValid_out <= traceEnable_in;
 				end if;
@@ -320,33 +320,33 @@ begin
 			-- enough time for one I/O cycle, if it wants it - this will provide enough of a delay
 			-- for the write masks and data to stabilise.
 			--
-			when R_WRITE_OWNED_NOP1 =>
+			when S_WRITE_OWNED_NOP1 =>
 				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
-				rstate_next <= R_WRITE_OWNED_NOP2;
-			when R_WRITE_OWNED_NOP2 =>
-				rstate_next <= R_WRITE_OWNED_NOP3;
-			when R_WRITE_OWNED_NOP3 =>
-				rstate_next <= R_WRITE_OWNED_NOP4;
-			when R_WRITE_OWNED_NOP4 =>
+				state_next <= S_WRITE_OWNED_NOP2;
+			when S_WRITE_OWNED_NOP2 =>
+				state_next <= S_WRITE_OWNED_NOP3;
+			when S_WRITE_OWNED_NOP3 =>
+				state_next <= S_WRITE_OWNED_NOP4;
+			when S_WRITE_OWNED_NOP4 =>
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
-				rstate_next <= R_WRITE_OWNED_EXEC;
+				state_next <= S_WRITE_OWNED_EXEC;
 
 			-- Now execute the owned write.
 			--
-			when R_WRITE_OWNED_EXEC =>
-				rstate_next <= R_WRITE_OWNED_FINISH;
+			when S_WRITE_OWNED_EXEC =>
+				state_next <= S_WRITE_OWNED_FINISH;
 				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
 				mcCmd_out <= MC_WR;
 				mcAddr_out <= transAddr(addrReg);
 				mcData_out <= mdData_sync;
-			when R_WRITE_OWNED_FINISH =>
+			when S_WRITE_OWNED_FINISH =>
 				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
-					rstate_next <= R_IDLE;
+					state_next <= S_IDLE;
 				end if;
 
 			-- -------------------------------------------------------------------------------------
@@ -354,31 +354,31 @@ begin
 			-- enough time for one I/O cycle, if it wants it - this will provide enough of a delay
 			-- for the write masks and data to stabilise.
 			--
-			when R_WRITE_OTHER_NOP1 =>
+			when S_WRITE_OTHER_NOP1 =>
 				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
-				rstate_next <= R_WRITE_OTHER_NOP2;
-			when R_WRITE_OTHER_NOP2 =>
-				rstate_next <= R_WRITE_OTHER_NOP3;
-			when R_WRITE_OTHER_NOP3 =>
-				rstate_next <= R_WRITE_OTHER_NOP4;
-			when R_WRITE_OTHER_NOP4 =>
+				state_next <= S_WRITE_OTHER_NOP2;
+			when S_WRITE_OTHER_NOP2 =>
+				state_next <= S_WRITE_OTHER_NOP3;
+			when S_WRITE_OTHER_NOP3 =>
+				state_next <= S_WRITE_OTHER_NOP4;
+			when S_WRITE_OTHER_NOP4 =>
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
-				rstate_next <= R_WRITE_OTHER_EXEC;
+				state_next <= S_WRITE_OTHER_EXEC;
 
 			-- Now execute the foreign write - it'll be handled by someone else so just copy it over
 			-- to the trace FIFO.
 			--
-			when R_WRITE_OTHER_EXEC =>
-				rstate_next <= R_WRITE_OTHER_FINISH;
+			when S_WRITE_OTHER_EXEC =>
+				state_next <= S_WRITE_OTHER_FINISH;
 				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
-			when R_WRITE_OTHER_FINISH =>
+			when S_WRITE_OTHER_FINISH =>
 				if ( mdDSW_sync = "11" ) then
-					rstate_next <= R_IDLE;
+					state_next <= S_IDLE;
 				end if;
 
 			-- -------------------------------------------------------------------------------------
@@ -386,25 +386,25 @@ begin
 			-- enough time for one I/O cycle, if it wants it - this will provide enough of a delay
 			-- for the write masks and data to stabilise.
 			--
-			when R_WRITE_REG_NOP1 =>
+			when S_WRITE_REG_NOP1 =>
 				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
-				rstate_next <= R_WRITE_REG_NOP2;
-			when R_WRITE_REG_NOP2 =>
-				rstate_next <= R_WRITE_REG_NOP3;
-			when R_WRITE_REG_NOP3 =>
-				rstate_next <= R_WRITE_REG_NOP4;
-			when R_WRITE_REG_NOP4 =>
+				state_next <= S_WRITE_REG_NOP2;
+			when S_WRITE_REG_NOP2 =>
+				state_next <= S_WRITE_REG_NOP3;
+			when S_WRITE_REG_NOP3 =>
+				state_next <= S_WRITE_REG_NOP4;
+			when S_WRITE_REG_NOP4 =>
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
-				rstate_next <= R_WRITE_REG_EXEC;
+				state_next <= S_WRITE_REG_EXEC;
 
 			-- Now execute the register write.
 			--
-			when R_WRITE_REG_EXEC =>
-				rstate_next <= R_WRITE_REG_FINISH;
+			when S_WRITE_REG_EXEC =>
+				state_next <= S_WRITE_REG_FINISH;
 				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
 				if ( addrReg(6 downto 3) = "1111" ) then
@@ -414,19 +414,19 @@ begin
 					regWrData_out <= mdData_sync;
 					regWrValid_out <= '1';
 				end if;
-			when R_WRITE_REG_FINISH =>
+			when S_WRITE_REG_FINISH =>
 				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
-					rstate_next <= R_IDLE;
+					state_next <= S_IDLE;
 				end if;
 
 			-- -------------------------------------------------------------------------------------
-			-- R_IDLE & others.
+			-- S_IDLE & others.
 			--
 			when others =>
 				-- See if the host wants MD back in reset
 				if ( mdReset_in = '1' ) then
 					-- MD back in reset, so give host full control again
-					rstate_next <= R_RESET;
+					state_next <= S_RESET;
 				end if;
 
 				if ( mdOE_sync = '0' ) then
@@ -435,7 +435,7 @@ begin
 					mdAS_next <= mdAS_sync;
 					if ( mdAddr_sync(22 downto 7) = x"A130" ) then
 						-- MD is reading the 0xA130xx range
-						rstate_next <= R_READ_OWNED_NOP1;
+						state_next <= S_READ_OWNED_NOP1;
 						regAddr_out <= mdAddr_sync(2 downto 0);
 						dataReg_next <= regRdData_in;
 						regRdStrobe_out <= '1';
@@ -443,12 +443,12 @@ begin
 						traceValid_out <= traceEnable_in;
 					elsif ( mdAddr_sync(22) = '0' ) then
 						-- MD is doing an owned read (i.e in our address ranges)
-						rstate_next <= R_READ_OWNED_WAIT;
+						state_next <= S_READ_OWNED_WAIT;
 						mcCmd_out <= MC_RD;
 						mcAddr_out <= transAddr(mdAddr_sync);
 					else
 						-- MD is doing a foreign read (i.e not in our address ranges)
-						rstate_next <= R_READ_OTHER;
+						state_next <= S_READ_OTHER;
 					end if;
 				elsif ( mdDSW_sync /= "11" ) then
 					-- MD is writing
@@ -458,17 +458,17 @@ begin
 						-- MD is writing 0xA130xx range
 						if ( mdAddr_sync(6 downto 0) = "1111000" ) then
 							-- The 0xA130F0 register is not mapped
-							rstate_next <= R_WRITE_OTHER_NOP1;
+							state_next <= S_WRITE_OTHER_NOP1;
 						else
 							-- All others are mapped
-							rstate_next <= R_WRITE_REG_NOP1;
+							state_next <= S_WRITE_REG_NOP1;
 						end if;
 					elsif ( mdAddr_sync(22) = '0' ) then
 						-- MD is doing an owned write (i.e in our address ranges)
-						rstate_next <= R_WRITE_OWNED_NOP1;
+						state_next <= S_WRITE_OWNED_NOP1;
 					else
 						-- MD is doing a foreign write (i.e not in our address ranges)
-						rstate_next <= R_WRITE_OTHER_NOP1;
+						state_next <= S_WRITE_OTHER_NOP1;
 					end if;
 				end if;
 		end case;
