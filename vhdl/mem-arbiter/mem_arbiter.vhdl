@@ -109,18 +109,11 @@ architecture rtl of mem_arbiter is
 		R_WRITE_REG_EXEC,
 		R_WRITE_REG_FINISH
 	);
-	type MStateType is (
-		M_IDLE,
-		M_READ_WAIT,
-		M_END_WAIT
-	);
 	type BankType is array (0 to 15) of std_logic_vector(4 downto 0);
 	
 	-- Registers
 	signal rstate       : RStateType := R_RESET;
 	signal rstate_next  : RStateType;
-	signal mstate       : MStateType := M_IDLE;
-	signal mstate_next  : MStateType;
 	signal dataReg      : std_logic_vector(15 downto 0) := (others => '0');
 	signal dataReg_next : std_logic_vector(15 downto 0);
 	signal addrReg      : std_logic_vector(22 downto 0) := (others => '0');
@@ -144,9 +137,6 @@ architecture rtl of mem_arbiter is
 	signal mdData_sync  : std_logic_vector(15 downto 0) := (others => '0');
 	constant TR_RD      : std_logic_vector(1 downto 0) := "11";
 	constant TR_WB      : std_logic_vector(1 downto 0) := "00";
-	
-	-- Flag to allow arbiter state machine to kick bus-controller
-	signal genRDV       : std_logic;
 begin
 	-- Infer registers
 	process(clk_in)
@@ -154,7 +144,6 @@ begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
 				rstate <= R_RESET;
-				mstate <= M_IDLE;
 				dataReg <= (others => '0');
 				addrReg <= (others => '0');
 				mdAddr_sync <= (others => '0');
@@ -170,7 +159,6 @@ begin
 				);
 			else
 				rstate <= rstate_next;
-				mstate <= mstate_next;
 				dataReg <= dataReg_next;
 				addrReg <= addrReg_next;
 				mdAddr_sync <= mdAddr_in;
@@ -230,15 +218,10 @@ begin
 		regWrValid_out <= '0';
 		regRdStrobe_out <= '0';
 
-		-- Flag for read data valid
-		genRDV <= '0';
+		-- MegaDrive data bus
+		mdData_io <= (others => 'Z');
+		mdDriveBus_out <= '0';
 
-		-- Can inject dummy trace data to debug startup hangs
-		--if ( count48(15 downto 0) = x"FFFF" ) then
-		--	traceData_out <= std_logic_vector(count48) & '1' & TR_WB & x"00000" & "000" & x"CAFE";
-		--	traceValid_out <= traceEnable_in;
-		--end if;
-		
 		case rstate is
 			-- -------------------------------------------------------------------------------------
 			-- Whilst the MD is in reset, the SDRAM does auto-refresh, and the host has complete
@@ -268,6 +251,8 @@ begin
 			-- the trace FIFO and proceed.
 			--
 			when R_READ_OWNED_WAIT =>
+				mdData_io <= mcData_in;
+				mdDriveBus_out <= '1';
 				if ( mcRDV_in = '1' ) then
 					rstate_next <= R_READ_OWNED_NOP1;
 					if ( regMapRam_in = '1' ) then
@@ -277,24 +262,30 @@ begin
 						dataReg_next <= bootInsn;
 						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & bootInsn;
 					end if;
-					genRDV <= '1';
 					traceValid_out <= traceEnable_in;
 				end if;
 
 			-- Give the host enough time for one I/O cycle, if it wants it.
 			--
 			when R_READ_OWNED_NOP1 =>
-				genRDV <= '1';
+				mdData_io <= dataReg;
+				mdDriveBus_out <= '1';
 				ppReady_out <= mcReady_in;
 				mcCmd_out <= ppCmd_in;
 				mcAddr_out <= ppAddr_in;
 				mcData_out <= ppData_in;
 				rstate_next <= R_READ_OWNED_NOP2;
 			when R_READ_OWNED_NOP2 =>
+				mdData_io <= dataReg;
+				mdDriveBus_out <= '1';
 				rstate_next <= R_READ_OWNED_NOP3;
 			when R_READ_OWNED_NOP3 =>
+				mdData_io <= dataReg;
+				mdDriveBus_out <= '1';
 				rstate_next <= R_READ_OWNED_NOP4;
 			when R_READ_OWNED_NOP4 =>
+				mdData_io <= dataReg;
+				mdDriveBus_out <= '1';
 				ppData_out <= mcData_in;
 				ppRDV_out <= mcRDV_in;
 				rstate_next <= R_READ_OWNED_REFRESH;
@@ -302,9 +293,13 @@ begin
 			-- Start a refresh cycle, then wait for it to complete.
 			--
 			when R_READ_OWNED_REFRESH =>
+				mdData_io <= dataReg;
+				mdDriveBus_out <= '1';
 				rstate_next <= R_READ_OWNED_FINISH;
 				mcCmd_out <= MC_REF;
 			when R_READ_OWNED_FINISH =>
+				mdData_io <= dataReg;
+				mdDriveBus_out <= '1';
 				if ( mcReady_in = '1' and mdOE_sync = '1' ) then
 					rstate_next <= R_IDLE;
 				end if;
@@ -475,40 +470,6 @@ begin
 						-- MD is doing a foreign write (i.e not in our address ranges)
 						rstate_next <= R_WRITE_OTHER_NOP1;
 					end if;
-				end if;
-		end case;
-	end process;
-
-	-- #############################################################################################
-	-- ##                     State machine to control the MD data-bus buffer                     ##
-	-- #############################################################################################
-	process(
-		mstate, addrReg, dataReg, mdOE_sync, mdAddr_sync(22), mcData_in, genRDV)
-	begin
-		mstate_next <= mstate;
-		mdData_io <= (others => 'Z');
-		mdDriveBus_out <= '0';
-		
-		case mstate is
-			when M_READ_WAIT =>
-				mdData_io <= mcData_in;
-				mdDriveBus_out <= '1';
-				if ( genRDV = '1' ) then
-					mstate_next <= M_END_WAIT;
-				end if;
-
-			when M_END_WAIT =>
-				mdData_io <= dataReg;
-				mdDriveBus_out <= '1';
-				if ( mdOE_sync = '1' ) then
-					mstate_next <= M_IDLE;
-					mdData_io <= (others => 'Z');
-					mdDriveBus_out <= '0';
-				end if;
-
-			when M_IDLE =>
-				if ( mdOE_sync = '0' and (mdAddr_sync(22) = '0' or mdAddr_sync(22 downto 7) = x"A130") ) then
-					mstate_next <= M_READ_WAIT;
 				end if;
 		end case;
 	end process;
