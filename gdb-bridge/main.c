@@ -13,6 +13,7 @@
 #include "remote.h"
 #include "escape.h"
 #include "mem.h"
+#include "args.h"
 
 static int readMessage(int conn, char *buf, int bufSize) {
 	char *ptr = buf;
@@ -78,11 +79,22 @@ static int handleConnection(int conn, struct FLContext *handle) {
 	return bytesRead;
 }
 
+void usage(const char *prog) {
+	printf("Usage: %s [-crd] [-w <file:addr>] [-l <listenPort>] [-b <brkAddr>]\n\n", prog);
+	printf("Interact with the UMDKv2 cartridge.\n\n");
+	printf("  -w <file:addr>   write the file to the given address\n");
+	printf("  -l <listenPort>  listen for GDB connections on the given port\n");
+	printf("  -b <brkAddr>     address to use to interrupt execution\n");
+	printf("  -c               continue execution\n");
+	printf("  -r               simulate a reset\n");
+	printf("  -d               enable GDB RAM dumps & tracing\n");
+	printf("  -h               print this help and exit\n");
+}
+
 int main(int argc, char *argv[]) {
 	int retVal = 0;
 	int server = -1;
 	int conn = -1;
-	uint16 port;
 	socklen_t clientAddrLen;
 	struct sockaddr_in serverAddress = {0,};
 	struct sockaddr_in clientAddress = {0,};
@@ -93,6 +105,123 @@ int main(int argc, char *argv[]) {
 	const char *error = NULL;
 	FLStatus fStatus;
 	struct FLContext *handle = NULL;
+	bool doCont = false, doReset = false, doDebug = false;
+	const char *wrFile = NULL, *listenPortStr = NULL, *brkAddrStr = NULL;
+	char *loadFile = NULL;
+	uint8 *loadData = NULL;
+	uint16 listenPort = 0;
+	uint32 brkAddr = 0;
+	const char *const prog = argv[0];
+	printf("UMDKv2 Bridge Tool Copyright (C) 2014 Chris McClelland\n\n");
+	argv++;
+	argc--;
+	while ( argc ) {
+		if ( argv[0][0] != '-' ) {
+			unexpected(prog, *argv);
+			FAIL(1, cleanup);
+		}
+		switch ( argv[0][1] ) {
+		case 'h':
+			usage(prog);
+			FAIL(0, cleanup);
+			break;
+		case 'w':
+			GET_ARG("w", wrFile, 7, cleanup);
+			break;
+		case 'l':
+			GET_ARG("l", listenPortStr, 6, cleanup);
+			break;
+		case 'b':
+			GET_ARG("r", brkAddrStr, 7, cleanup);
+			break;
+		case 'c':
+			doCont = true;
+			break;
+		case 'r':
+			doReset = true;
+			break;
+		case 'd':
+			doDebug = true;
+			break;
+		default:
+			invalid(prog, argv[0][1]);
+			FAIL(2, cleanup);
+		}
+		argv++;
+		argc--;
+	}
+	printf("doCont = %s\n", doCont ? "true" : "false");
+	printf("doReset = %s\n", doReset ? "true" : "false");
+	printf("doDebug = %s\n", doDebug ? "true" : "false");
+	if ( wrFile ) {
+		size_t fileNameLength, numBytes;
+		const char *ptr = wrFile;
+		uint32 loadAddr = 0;
+		char ch = *ptr;
+		while ( ch && ch != ':' ) {
+			ch = *++ptr;
+		}
+		if ( ch ) {
+			if ( ch != ':' ) {
+				fprintf(stderr, "Invalid argument to option -w <file:addr>\n");
+				FAIL(1, cleanup);
+			}
+			fileNameLength = ptr - wrFile;
+			ptr++;
+			loadAddr = (uint32)strtoul(ptr, (char**)&ptr, 0);
+			if ( *ptr != '\0' ) {
+				fprintf(stderr, "Invalid argument to option -w <file:addr>\n");
+				FAIL(15, cleanup);
+			}
+			loadFile = malloc(fileNameLength + 1);
+			if ( !loadFile ) {
+				fprintf(stderr, "Memory allocation error!\n");
+				FAIL(14, cleanup);
+			}
+			strncpy(loadFile, wrFile, fileNameLength);
+			loadFile[fileNameLength] = '\0';
+			loadData = flLoadFile(loadFile, &numBytes);
+			if ( !loadData ) {
+				fprintf(stderr, "Unable to load file %s!\n", loadFile);
+				FAIL(14, cleanup);
+			}
+			if ( numBytes & 1 ) {
+				fprintf(stderr, "File %s contains an odd number of bytes!\n", loadFile);
+				FAIL(15, cleanup);
+			}
+			free(loadFile);
+			loadFile = NULL;
+		} else {
+			loadData = flLoadFile(wrFile, &numBytes);
+			if ( !loadData ) {
+				fprintf(stderr, "Unable to load file %s!\n", wrFile);
+				FAIL(14, cleanup);
+			}
+			if ( numBytes & 1 ) {
+				fprintf(stderr, "File %s contains an odd number of bytes!\n", wrFile);
+				FAIL(15, cleanup);
+			}
+		}
+		printf("Got 0x%06X bytes to load at 0x%06X\n", (uint32)numBytes, loadAddr);
+	}
+	if ( listenPortStr ) {
+		const char *ptr = listenPortStr;
+		listenPort = (uint16)strtoul(ptr, (char**)&ptr, 0);
+		if ( *ptr != '\0' ) {
+			fprintf(stderr, "Invalid argument to option -l <listenPort>\n");
+			FAIL(15, cleanup);
+		}
+		printf("listenPort = %d\n", listenPort);
+	}
+	if ( brkAddrStr ) {
+		const char *ptr = brkAddrStr;
+		brkAddr = (uint32)strtoul(ptr, (char**)&ptr, 0);
+		if ( *ptr != '\0' ) {
+			fprintf(stderr, "Invalid argument to option -b <brkAddr>\n");
+			FAIL(15, cleanup);
+		}
+		printf("brkAddr = 0x%06X\n", brkAddr);
+	}
 
 	fStatus = flInitialise(0, &error);
 	CHECK_STATUS(fStatus, 1, cleanup);
@@ -103,46 +232,43 @@ int main(int argc, char *argv[]) {
 	fStatus = flSelectConduit(handle, 0x01, NULL);
 	CHECK_STATUS(fStatus, 1, cleanup);
 
-	if ( argc != 2 ) {
-		fprintf(stderr, "Synopsis: %s <port>\n", argv[0]);
-		umdkReset(handle, NULL);
-		FAIL(1, cleanup);
-	}
-	port = (uint16)strtoul(argv[1], NULL, 0);
-	if ( !port ) {
-		fprintf(stderr, "Invalid port!\n");
-		FAIL(2, cleanup);
-	}
-
-	server = socket(AF_INET, SOCK_STREAM, 0);
-	if ( server < 0 ) {
-		errRenderStd(&error);
-		FAIL(1, cleanup);
-	}
-	serverAddress.sin_family = AF_INET;
-	serverAddress.sin_addr.s_addr = INADDR_ANY;
-	serverAddress.sin_port = htons(port);
-	retVal = bind(server, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
-	if ( retVal < 0 ) {
-		errRenderStd(&error);
-		FAIL(2, cleanup);
-	}
-	for ( ; ; ) {
-		printf("Waiting for GDB connection on :%d...\n", port);
-		listen(server, 5);
-		clientAddrLen = sizeof(clientAddress);
-		conn = accept(server, (struct sockaddr *)&clientAddress, &clientAddrLen);
-		if ( conn < 0 ) {
+	if ( listenPortStr ) {
+		server = socket(AF_INET, SOCK_STREAM, 0);
+		if ( server < 0 ) {
 			errRenderStd(&error);
-			FAIL(3, cleanup);
+			FAIL(1, cleanup);
 		}
-		u.ip4 = clientAddress.sin_addr.s_addr;
-		printf("Got GDB connection from %d.%d.%d.%d:%d\n", u.ip[0], u.ip[1], u.ip[2], u.ip[3], clientAddress.sin_port);
-		setConnection(conn);
-		handleConnection(conn, handle);
-		printf("GDB disconnected\n");
+		serverAddress.sin_family = AF_INET;
+		serverAddress.sin_addr.s_addr = INADDR_ANY;
+		serverAddress.sin_port = htons(listenPort);
+		retVal = bind(server, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+		if ( retVal < 0 ) {
+			errRenderStd(&error);
+			FAIL(2, cleanup);
+		}
+		for ( ; ; ) {
+			printf("Waiting for GDB connection on :%d...\n", listenPort);
+			listen(server, 5);
+			clientAddrLen = sizeof(clientAddress);
+			conn = accept(server, (struct sockaddr *)&clientAddress, &clientAddrLen);
+			if ( conn < 0 ) {
+				errRenderStd(&error);
+				FAIL(3, cleanup);
+			}
+			u.ip4 = clientAddress.sin_addr.s_addr;
+			printf("Got GDB connection from %d.%d.%d.%d:%d\n", u.ip[0], u.ip[1], u.ip[2], u.ip[3], clientAddress.sin_port);
+			setConnection(conn);
+			handleConnection(conn, handle);
+			printf("GDB disconnected\n");
+		}
 	}
 cleanup:
+	if ( loadFile ) {
+		free(loadFile);
+	}
+	if ( loadData ) {
+		flFreeFile(loadData);
+	}
 	if ( error ) {
 		fprintf(stderr, "%s: %s\n", argv[0], error);
 		flFreeError(error);
