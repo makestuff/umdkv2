@@ -47,7 +47,8 @@ extern "C" {
 		CMD_STEP,
 		CMD_CONT,
 		CMD_READ,
-		CMD_WRITE
+		CMD_WRITE,
+		CMD_RESET
 	} Command;
 
 	#define ILLEGAL  0x4AFC
@@ -161,6 +162,10 @@ extern "C" {
 
 	int umdkGetRegister(
 		struct FLContext *handle, Register reg, uint32 *value, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkReset(
+		struct FLContext *handle, const char **error
 	) WARN_UNUSED_RESULT;
 
 #ifdef __cplusplus

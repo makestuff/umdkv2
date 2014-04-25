@@ -12,6 +12,7 @@
 #include <liberror.h>
 #include "remote.h"
 #include "escape.h"
+#include "mem.h"
 
 static int readMessage(int conn, char *buf, int bufSize) {
 	char *ptr = buf;
@@ -92,15 +93,6 @@ int main(int argc, char *argv[]) {
 	const char *error = NULL;
 	FLStatus fStatus;
 	struct FLContext *handle = NULL;
-	if ( argc != 2 ) {
-		fprintf(stderr, "Synopsis: %s <port>\n", argv[0]);
-		FAIL(1, cleanup);
-	}
-	port = (uint16)strtoul(argv[1], NULL, 0);
-	if ( !port ) {
-		fprintf(stderr, "Invalid port!\n");
-		FAIL(2, cleanup);
-	}
 
 	fStatus = flInitialise(0, &error);
 	CHECK_STATUS(fStatus, 1, cleanup);
@@ -110,6 +102,17 @@ int main(int argc, char *argv[]) {
 
 	fStatus = flSelectConduit(handle, 0x01, NULL);
 	CHECK_STATUS(fStatus, 1, cleanup);
+
+	if ( argc != 2 ) {
+		fprintf(stderr, "Synopsis: %s <port>\n", argv[0]);
+		umdkReset(handle, NULL);
+		FAIL(1, cleanup);
+	}
+	port = (uint16)strtoul(argv[1], NULL, 0);
+	if ( !port ) {
+		fprintf(stderr, "Invalid port!\n");
+		FAIL(2, cleanup);
+	}
 
 	server = socket(AF_INET, SOCK_STREAM, 0);
 	if ( server < 0 ) {

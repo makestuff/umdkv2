@@ -80,6 +80,7 @@ monLoop:
 	 */
 	.org    0x000100
 main:
+	move.w	#0x2700, sr		/* disable interrupts */
 	move.l	d0, d0Save		/* save all registers in host-accessible memory */
 	move.l	d1, d1Save
 	move.l	d2, d2Save
@@ -165,12 +166,19 @@ wrLoop:	move.w	(a0)+, (a1)+
 	dbra	d0, wrLoop
 	rts
 
+reset:
+	reset				/* reset peripherals */
+	move.l	0x000000, sp		/* set supervisor stack pointer */
+	move.l	0x000004, a0		/* get reset vector */
+	move.w	#0, cmdFlag		/* tell host we're running */
+	jmp	(a0)			/* and...GO! */
+	
 jTab:
 	dc.l	step-lda2-2
 	dc.l	continue-lda2-2
 	dc.l	read-lda2-2
 	dc.l	write-lda2-2
-	dc.l	doNothing-lda2-2
+	dc.l	reset-lda2-2
 	dc.l	doNothing-lda2-2
 	dc.l	doNothing-lda2-2
 	dc.l	doNothing-lda2-2

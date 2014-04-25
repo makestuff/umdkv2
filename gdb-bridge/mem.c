@@ -573,7 +573,8 @@ static const char *cmdNames[] = {
 	"CMD_STEP",
 	"CMD_CONT",
 	"CMD_READ",
-	"CMD_WRITE"
+	"CMD_WRITE",
+	"CMD_RESET"
 };
 */
 
@@ -619,6 +620,17 @@ int umdkExecuteCommand(
 		CHECK_STATUS(status, status, cleanup);
 	}
 
+cleanup:
+	return retVal;
+}
+
+int umdkReset(struct FLContext *handle, const char **error) {
+	int retVal = 0;
+	int status;
+	status = umdkDirectWriteWord(handle, CB_INDEX, CMD_RESET, error);
+	CHECK_STATUS(status, status, cleanup);
+	status = umdkDirectWriteWord(handle, CB_FLAG, CF_CMD, error);
+	CHECK_STATUS(status, status, cleanup);
 cleanup:
 	return retVal;
 }

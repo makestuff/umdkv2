@@ -80,6 +80,12 @@ static void checksum(char *message) {
 	*message = hexDigits[checksum & 0x0F];
 }
 
+static const char *regNames[] = {
+	"D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
+	"A0", "A1", "A2", "A3", "A4", "A5", "FP", "SP",
+	"SR", "PC"
+};
+
 // TODO: Fix debug/error handling
 static const char *g_error = NULL;
 #define CHKERR(s) do { if ( s ) { if ( g_error ) { printf("%s\n", g_error); flFreeError(g_error); g_error = NULL; } else { printf("Error code %d\n", status); } } } while(0)
@@ -97,6 +103,7 @@ static int cmdWriteRegister(const char *cmd, int conn, struct FLContext *handle)
 	if ( reg < 18 ) {
 		cmd = end + 1;
 		val = strtoul(cmd, NULL, 16);
+		printf("%s = 0x%08X\n", regNames[reg], val);
 		status = umdkSetRegister(handle, reg, val, &g_error);
 		CHKERR(status);
 	}
