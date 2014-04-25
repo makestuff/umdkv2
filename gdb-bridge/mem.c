@@ -79,6 +79,44 @@ cleanup:
 	return retVal;
 }
 
+// Direct-write a sequence of bytes to the specified PHYSICAL address. Bear in mind that the
+// mapping from logical to physical addresses are done via the SSF2 registers; the mapping is
+// 1:1 only for the lowest 512KiB, and is fixed for only the lowest 512KiB and the top 512KiB.
+// The area to be written must have an even start address and length. The MegaDrive need not
+// be suspended at the monitor, but overwriting the code that the MD is executing is obviously
+// a recipe for disaster.
+//
+int umdkPhysicalWriteBytes(
+	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
+	const char **error)
+{
+	int retVal = 0;
+	FLStatus status;
+	uint8 command[8];
+	uint32 wordAddr;
+	uint32 wordCount;
+
+	// Next verify that the write is to an even address, and has even length
+	CHECK_STATUS(address&1, 2, cleanup, "umdkPhysicalWriteBytes(): Address must be even!");
+	CHECK_STATUS(count&1, 3, cleanup, "umdkPhysicalWriteBytes(): Count must be even!");
+
+	// Get word-count and word-addres
+	wordAddr = address / 2;
+	wordCount = count / 2;
+
+	// Prepare the write command
+	prepMemCtrlCmd(0x00, wordAddr, command);
+	prepMemCtrlCmd(0x80, wordCount, command+4);
+
+	// Do the write
+	status = flWriteChannelAsync(handle, 0x00, 8, command, error);
+	CHECK_STATUS(status, 4, cleanup);
+	status = flWriteChannelAsync(handle, 0x00, count, data, error);
+	CHECK_STATUS(status, 5, cleanup);
+cleanup:
+	return retVal;
+}
+
 // Direct-write a sequence of bytes to the specified address. The area of memory to be written must
 // reside entirely within one of the two direct-writable memory areas (0x000000-0x07FFFF and
 // 0x400000-0x47FFFF, mapped to SDRAM pages 0 and 31 respectively) and must have an even start
@@ -635,6 +673,15 @@ cleanup:
 	return retVal;
 }
 
+int umdkContinue(struct FLContext *handle, const char **error) {
+	int retVal = 0, status = umdkDirectWriteWord(handle, CB_INDEX, CMD_CONT, error);
+	CHECK_STATUS(status, status, cleanup);
+	status = umdkDirectWriteWord(handle, CB_FLAG, CF_CMD, error);
+	CHECK_STATUS(status, status, cleanup);
+cleanup:
+	return retVal;
+}
+
 // Have the monitor continue execution with the SR trace bit set. This will cause precisely one
 // instruction of user code to execute and then return control to the monitor. Tracing only works if
 // the code being executed is running in user mode. If you try to step through supervisor-mode code,
@@ -662,8 +709,8 @@ cleanup:
 // a breakpoint is hit. If there is no breakpoint in the execution-path, this function will wait
 // forever.
 //
-int umdkCont(
-	struct FLContext *handle, struct Registers *regs, const char **error)
+int umdkContWait(
+	struct FLContext *handle, bool debug, struct Registers *regs, const char **error)
 {
 	int retVal = 0, status, i;
 	uint8 tmpData[65536];
@@ -678,20 +725,22 @@ int umdkCont(
 	const uint8 *recvData;
 	FILE *file = NULL;
 
-	// Read RAM
-	status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Save it
-	file = fopen("ramBefore.bin", "wb");
-	CHECK_STATUS(!file, 13, cleanup, "umdkCont(): Unable to open ramBefore.bin for writing!");
-	fwrite(tmpData, 1, 65536, file);
-	fclose(file);
-	file = NULL;
-
-	// Open trace log
-	file = fopen("trace.log", "wb");
-	CHECK_STATUS(!file, 13, cleanup, "umdkCont(): Unable to open trace.log for writing!");
+	if ( debug ) {
+		// Read RAM
+		status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Save it
+		file = fopen("ramBefore.bin", "wb");
+		CHECK_STATUS(!file, 13, cleanup, "umdkContWait(): Unable to open ramBefore.bin for writing!");
+		fwrite(tmpData, 1, 65536, file);
+		fclose(file);
+		file = NULL;
+		
+		// Open trace log
+		file = fopen("trace.log", "wb");
+		CHECK_STATUS(!file, 13, cleanup, "umdkContWait(): Unable to open trace.log for writing!");
+	}
 
 	// Get address of VDP vertical interrupt routine and its first opcode
 	status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
@@ -703,44 +752,48 @@ int umdkCont(
 	status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
 	CHECK_STATUS(status, status, cleanup);
 
-	// Disable tracing (if any) & clear junk from trace FIFO
-	tmpData[0] = 0x00;
-	status = flWriteChannel(handle, 0x01, 1, tmpData, error);
-	CHECK_STATUS(status, 25, cleanup);
-	status = flReadChannel(handle, 0x03, 1, tmpData, error);
-	CHECK_STATUS(status, 20, cleanup);
-	scrapSize = tmpData[0] << 8;
-	status = flReadChannel(handle, 0x04, 1, tmpData, error);
-	CHECK_STATUS(status, 20, cleanup);
-	scrapSize |= tmpData[0];
-	while ( scrapSize ) {
-		// Clear junk from FIFO
-		status = flReadChannel(handle, 0x02, scrapSize, tmpData, error);
-		CHECK_STATUS(status, 20, cleanup);
-		
-		// Verify no junk remaining
+	if ( debug ) {
+		// Disable tracing (if any) & clear junk from trace FIFO
+		tmpData[0] = 0x00;
+		status = flWriteChannel(handle, 0x01, 1, tmpData, error);
+		CHECK_STATUS(status, 25, cleanup);
 		status = flReadChannel(handle, 0x03, 1, tmpData, error);
 		CHECK_STATUS(status, 20, cleanup);
 		scrapSize = tmpData[0] << 8;
 		status = flReadChannel(handle, 0x04, 1, tmpData, error);
 		CHECK_STATUS(status, 20, cleanup);
 		scrapSize |= tmpData[0];
+		while ( scrapSize ) {
+			// Clear junk from FIFO
+			status = flReadChannel(handle, 0x02, scrapSize, tmpData, error);
+			CHECK_STATUS(status, 20, cleanup);
+			
+			// Verify no junk remaining
+			status = flReadChannel(handle, 0x03, 1, tmpData, error);
+			CHECK_STATUS(status, 20, cleanup);
+			scrapSize = tmpData[0] << 8;
+			status = flReadChannel(handle, 0x04, 1, tmpData, error);
+			CHECK_STATUS(status, 20, cleanup);
+			scrapSize |= tmpData[0];
+		}
+		
+		// Enable tracing
+		tmpData[0] = 0x02;
+		status = flWriteChannelAsync(handle, 0x01, 1, tmpData, error);
+		CHECK_STATUS(status, 25, cleanup);
 	}
-	
-	// Enable tracing
-	tmpData[0] = 0x02;
-	status = flWriteChannelAsync(handle, 0x01, 1, tmpData, error);
-	CHECK_STATUS(status, 25, cleanup);
-	
+
 	// Set up the continue command and execute it
 	status = umdkDirectWriteWord(handle, CB_INDEX, CMD_CONT, error);
 	CHECK_STATUS(status, status, cleanup);
 	status = umdkDirectWriteWord(handle, CB_FLAG, CF_CMD, error);
 	CHECK_STATUS(status, status, cleanup);
 
-	// Submit 1st read for some trace data
-	status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
-	CHECK_STATUS(status, 28, cleanup);
+	if ( debug ) {
+		// Submit 1st read for some trace data
+		status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
+		CHECK_STATUS(status, 28, cleanup);
+	}
 
 	// Submit 1st read for the command status flag
 	status = umdkDirectReadBytesAsync(handle, CB_FLAG, 2, error);
@@ -752,34 +805,40 @@ int umdkCont(
 			CHECK_STATUS(status, status, cleanup);
 		}
 
-		// Submit a read for some trace data
-		status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
-		CHECK_STATUS(status, 28, cleanup);
+		if ( debug ) {
+			// Submit a read for some trace data
+			status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
+			CHECK_STATUS(status, 28, cleanup);
+		}
 
 		// Submit a read for the command status flag
 		status = umdkDirectReadBytesAsync(handle, CB_FLAG, 2, error);
 		CHECK_STATUS(status, status, cleanup);
 
-		// Await the requested trace data
-		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
-		CHECK_STATUS(status, status, cleanup);
+		if ( debug ) {
+			// Await the requested trace data
+			status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+			CHECK_STATUS(status, status, cleanup);
 
-		// Write it to the trace-log
-		fwrite(recvData, 1, actualLength, file);
+			// Write it to the trace-log
+			fwrite(recvData, 1, actualLength, file);
+		}
 
 		// Await the requested command status flag
 		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
 		CHECK_STATUS(status, status, cleanup);
 	} while ( recvData[0] != 0x00 || recvData[1] != CF_READY );
 
-	// Await the final block of trace-data
-	status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Write it to the trace-log
-	fwrite(recvData, 1, actualLength, file);
-	fclose(file);
-	file = NULL;
+	if ( debug ) {
+		// Await the final block of trace-data
+		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Write it to the trace-log
+		fwrite(recvData, 1, actualLength, file);
+		fclose(file);
+		file = NULL;
+	}
 	
 	// Await the final command-flag
 	status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
@@ -798,17 +857,18 @@ int umdkCont(
 		}
 	}
 
-	// Read RAM
-	status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
-	CHECK_STATUS(status, status, cleanup);
-
-	// Save it
-	file = fopen("ramAfter.bin", "wb");
-	CHECK_STATUS(!file, 13, cleanup, "umdkCont(): Unable to open ramAfter.bin for writing!");
-	fwrite(tmpData, 1, 65536, file);
-	fclose(file);
-	file = NULL;
-
+	if ( debug ) {
+		// Read RAM
+		status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
+		CHECK_STATUS(status, status, cleanup);
+		
+		// Save it
+		file = fopen("ramAfter.bin", "wb");
+		CHECK_STATUS(!file, 13, cleanup, "umdkContWait(): Unable to open ramAfter.bin for writing!");
+		fwrite(tmpData, 1, 65536, file);
+		fclose(file);
+		file = NULL;
+	}
 cleanup:
 	if ( file ) {
 		fclose(file);

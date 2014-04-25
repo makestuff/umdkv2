@@ -79,6 +79,11 @@ extern "C" {
 	// ---------------------------------------------------------------------------------------------
 	// Direct read/write operations
 	//
+	int umdkPhysicalWriteBytes(
+		struct FLContext *handle, uint32 address, uint32 count, const uint8 *data,
+		const char **error
+	) WARN_UNUSED_RESULT;
+
 	int umdkDirectWriteFile(
 		struct FLContext *handle, uint32 address, const char *fileName, const char **error
 	) WARN_UNUSED_RESULT;
@@ -149,8 +154,12 @@ extern "C" {
 		struct FLContext *handle, struct Registers *regs, const char **error
 	) WARN_UNUSED_RESULT;
 
-	int umdkCont(
-		struct FLContext *handle, struct Registers *regs, const char **error
+	int umdkContWait(
+		struct FLContext *handle, bool debug, struct Registers *regs, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkContinue(
+		struct FLContext *handle, const char **error
 	) WARN_UNUSED_RESULT;
 
 	// ---------------------------------------------------------------------------------------------

@@ -15,6 +15,8 @@
 #include "mem.h"
 #include "args.h"
 
+void setDebug(bool);
+
 static int readMessage(int conn, char *buf, int bufSize) {
 	char *ptr = buf;
 	const char *const bufEnd = buf + bufSize;
@@ -104,13 +106,14 @@ int main(int argc, char *argv[]) {
 	} u;
 	const char *error = NULL;
 	FLStatus fStatus;
+	int uStatus;
 	struct FLContext *handle = NULL;
 	bool doCont = false, doReset = false, doDebug = false;
 	const char *wrFile = NULL, *listenPortStr = NULL, *brkAddrStr = NULL;
 	char *loadFile = NULL;
 	uint8 *loadData = NULL;
 	uint16 listenPort = 0;
-	uint32 brkAddr = 0;
+	uint32 brkAddr = 0, loadAddr = 0, loadSize = 0;
 	const char *const prog = argv[0];
 	printf("UMDKv2 Bridge Tool Copyright (C) 2014 Chris McClelland\n\n");
 	argv++;
@@ -150,13 +153,9 @@ int main(int argc, char *argv[]) {
 		argv++;
 		argc--;
 	}
-	printf("doCont = %s\n", doCont ? "true" : "false");
-	printf("doReset = %s\n", doReset ? "true" : "false");
-	printf("doDebug = %s\n", doDebug ? "true" : "false");
 	if ( wrFile ) {
 		size_t fileNameLength, numBytes;
 		const char *ptr = wrFile;
-		uint32 loadAddr = 0;
 		char ch = *ptr;
 		while ( ch && ch != ':' ) {
 			ch = *++ptr;
@@ -203,6 +202,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		printf("Got 0x%06X bytes to load at 0x%06X\n", (uint32)numBytes, loadAddr);
+		loadSize = (uint32)numBytes;
 	}
 	if ( listenPortStr ) {
 		const char *ptr = listenPortStr;
@@ -232,6 +232,49 @@ int main(int argc, char *argv[]) {
 	fStatus = flSelectConduit(handle, 0x01, NULL);
 	CHECK_STATUS(fStatus, 1, cleanup);
 
+	// Maybe enable debugging
+	setDebug(doDebug);
+
+	// Maybe load some data
+	if ( loadData ) {
+		uint16 cmdFlag, oldOp;
+		uint32 vbAddr;
+		uStatus = umdkDirectReadWord(handle, CB_FLAG, &cmdFlag, NULL);
+		CHECK_STATUS(uStatus, uStatus, cleanup);
+		if ( cmdFlag != CF_READY ) {
+			// Read address of VDP vertical interrupt vector & read 1st opcode
+			uStatus = umdkDirectReadLong(handle, VB_VEC, &vbAddr, NULL);
+			CHECK_STATUS(uStatus, uStatus, cleanup);
+			uStatus = umdkDirectReadWord(handle, vbAddr, &oldOp, NULL);
+			CHECK_STATUS(uStatus, uStatus, cleanup);
+			printf("vbAddr = 0x%06X, opCode = 0x%04X\n", vbAddr, oldOp);
+			
+			// Replace illegal instruction vector
+			uStatus = umdkDirectWriteLong(handle, IL_VEC, MONITOR, NULL);
+			CHECK_STATUS(uStatus, uStatus, cleanup);
+			
+			// Write illegal instruction opcode
+			uStatus = umdkDirectWriteWord(handle, vbAddr, ILLEGAL, NULL);
+			CHECK_STATUS(uStatus, uStatus, cleanup);
+			
+			// Acquire the monitor
+			uStatus = umdkRemoteAcquire(handle, NULL, NULL);
+			CHECK_STATUS(uStatus, uStatus, cleanup);
+			
+			// Restore old opcode to vbAddr
+			uStatus = umdkDirectWriteWord(handle, vbAddr, oldOp, NULL);
+			CHECK_STATUS(uStatus, uStatus, cleanup);
+		}
+		uStatus = umdkPhysicalWriteBytes(handle, loadAddr, loadSize, loadData, NULL);
+		CHECK_STATUS(uStatus, uStatus, cleanup);
+	}
+	if ( doReset ) {
+		uStatus = umdkReset(handle, NULL);
+		CHECK_STATUS(uStatus, uStatus, cleanup);
+	} else if ( doCont ) {
+		uStatus = umdkContinue(handle, NULL);
+		CHECK_STATUS(uStatus, uStatus, cleanup);
+	}
 	if ( listenPortStr ) {
 		server = socket(AF_INET, SOCK_STREAM, 0);
 		if ( server < 0 ) {

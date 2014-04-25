@@ -43,6 +43,12 @@ static struct BreakInfo breakpoints[] = {
 	{0x00000000, 0x0000}
 };
 
+static bool g_debug = false;
+
+void setDebug(bool debug) {
+	g_debug = debug;
+}
+
 // Parse a series of somechar-separated hex numbers
 // e.g parseList("a9,0a:cafe", NULL, &v1, ',', &v2, ':', &v3, '\0', NULL);
 // Remember the NULL at the end!
@@ -279,7 +285,7 @@ static int cmdStep(int conn, struct FLContext *handle) {
 // Process GDB execute-continue command
 static int cmdContinue(int conn, struct FLContext *handle) {
 	struct Registers regs;
-	int status = umdkCont(handle, &regs, &g_error);
+	int status = umdkContWait(handle, g_debug, &regs, &g_error);
 	CHKERR(status);
 	return write(conn, VL(RESPONSE_SIG));
 }

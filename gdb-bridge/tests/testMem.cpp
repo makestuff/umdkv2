@@ -383,7 +383,7 @@ TEST(Range_testCont) {
 	CHECK_EQUAL(0, retVal);
 
 	// Continue
-	retVal = umdkCont(g_handle, &regs, NULL);
+	retVal = umdkContWait(g_handle, false, &regs, NULL);
 	CHECK_EQUAL(0, retVal);
 	printRegs(&regs);
 	CHECK_EQUAL(0x220, regs.pc);
