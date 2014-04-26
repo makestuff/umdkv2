@@ -150,33 +150,135 @@ interrupt:
 	FLASH = 0x0004
 	SDCARD = 0x0008
 	
+	CMD_GO_IDLE_STATE     = 0
+	CMD_SEND_OP_COND      = 1
+	CMD_READ_SINGLE_BLOCK = 17
+	CMD_APP_SEND_OP_COND  = 41
+	CMD_APP_CMD           = 55
+
+	TOKEN_SUCCESS         = 0x00
+	TOKEN_READ_SINGLE     = 0xFE
+	IN_IDLE_STATE         = (1<<0)
+	
+delay:	move.w	d1, -(sp)
+dLoop:	dbra	d1, dLoop
+	move.w	(sp)+, d1
+	rts
+
+/*------------------------------------------------------------------------------
+ * slowCmd() sends the command in d0.b with zero argument, and with sufficient
+ * delay between bytes to work in the 400kHz mode (necessary during init). It
+ * relies on d1.w containing the delay calibration (should be 7). On exit, d0.b
+ * contains the response byte.
+ */
+slowCmd:
+	move.b	#0xFF, 2(a0)	/* dummy byte */
+	bsr.w	delay
+	or.b	#0x40, d0
+	move.b	d0, 2(a0)	/* command byte */
+	bsr.w	delay
+	move.b	#0x00, 2(a0)	/* param MSB */
+	bsr.w	delay
+	move.b	#0x00, 2(a0)	/* param */
+	bsr.w	delay
+	move.b	#0x00, 2(a0)	/* param */
+	bsr.w	delay
+	move.b	#0x00, 2(a0)	/* param LSB */
+	bsr.w	delay
+	move.b	#0x95, 2(a0)	/* CRC */
+	bsr.w	delay
+	move.b	#0xFF, 2(a0)	/* ignore return byte */
+	bsr.w	delay
+L0:	move.b	#0xFF, 2(a0)	/* get response */
+	bsr.w	delay
+	move.b	2(a0), d0
+	cmp.b	#0xFF, d0
+	beq.s	L0
+	rts
+
+/*---------------------- Issue a command in turbo mode -----------------------*/
+fastCmd:
+	or.w	#0xFF40, d0
+	move.w	d0, 0(a0)
+	swap	d1
+	move.w	d1, 0(a0)
+	swap	d1
+	move.w	d1, 0(a0)
+	move.w	#0x95FF, 0(a0)	/* dummy CRC & return byte */
+L1:	move.b	#0xFF, 2(a0)	/* get response */
+	move.b	2(a0), d0
+	cmp.b	#0xFF, d0
+	beq.s	L1
+	rts
+
+/*---------------------- Read the MBR from the SD-card -----------------------*/
 readBlock:
-	movem.l a0-a1, -(sp)
+	movem.l a0-a1/d0-d1, -(sp)
 	lea	0xA13000, a0
 	lea	0xFF1000, a1
 
-	/* Do some byte reads */
-	move.w	#(TURBO|FLASH), 4(a0)
-	move.b	#0x03, 2(a0)		/* 03 = read command */
-	move.b	#0x06, 2(a0)		/* 06 = page 6 */
-	move.b	#0x00, 2(a0)		/* address 0x60000: top 128KiB */
-	move.b	#0x00, 2(a0)
-	move.b	#0xFF, 2(a0)
-	move.b	2(a0), (a1)+
-	move.b	2(a0), (a1)+
-	move.b	2(a0), (a1)+
-	move.b	2(a0), (a1)+
-	move.b	2(a0), (a1)+
-	move.b	2(a0), (a1)+
-	move.b	2(a0), (a1)+
-	move.b	2(a0), (a1)+
-	move.w  #0, 4(a0)
+	/* 256 clocks at 400kHz with DI low */
+tryInit:
+	move.w	#0, 4(a0)
+	moveq	#31, d0		/* 32*8 = 256 */
+	moveq	#7, d1		/* enough delay for one byte @400kHz */
+L3:	move.b	#0x00, 2(a0)
+	bsr.w	delay
+	dbra	d0, L3
 
-	/* Do some word reads */
-	move.w	#(TURBO|FLASH), 4(a0)
-	move.w	#0x0306, 0(a0)		/* 03 = read command; 06 = page 6 */
-	move.w	#0x0000, 0(a0)		/* address 0x60000: top 128KiB */
+	/* 80 clocks at 400kHz with DI high */
+	moveq	#9, d0		/* 10*8 = 80 */
+L4:	move.b	#0xFF, 2(a0)
+	bsr.w	delay
+	dbra	d0, L4
+
+	/* Bring CS low and send CMD0 to reset and put the card in SPI mode */
+	move.w	#SDCARD, 4(a0)
+	move.b	#CMD_GO_IDLE_STATE, d0
+	bsr.w	slowCmd
+	cmp.b	#IN_IDLE_STATE, d0
+	beq.s	okIdle
+	
+	/* Send a couple of dummy bytes */
+	move.b	#0xFF, 2(a0)
+	bsr.w	delay
+	move.b	#0xFF, 2(a0)
+	bsr.w	delay
+	bra.w	tryInit
+	
+	/* Tell the card to initialize itself with ACMD41 */
+okIdle:
+	move.b	#CMD_APP_CMD, d0
+	bsr.w	slowCmd
+	move.b	#CMD_APP_SEND_OP_COND, d0
+	bsr.w	slowCmd
+L5:	move.b	#CMD_SEND_OP_COND, d0
+	bsr.w	slowCmd
+	tst.b	d0
+	bne.s	L5
+
+	/* Send a couple of dummy bytes */
+	move.b	#0xFF, 2(a0)
+	bsr.w	delay
+	move.b	#0xFF, 2(a0)
+	bsr.w	delay
+
+	/* Deselect SD-card */
+	move.w	#0, 4(a0)
+	bsr.w	delay
+	move.w	#(SDCARD | TURBO), 4(a0)
+	move.b	#CMD_READ_SINGLE_BLOCK, d0
+	moveq	#0, d1
+	bsr.w	fastCmd
+
+waitReadToken:
+	move.b	#0xFF, 2(a0)
+	cmp.b	#TOKEN_READ_SINGLE, 2(a0)
+	bne.s	waitReadToken
+
 	move.w	#0xFFFF, 0(a0)
+	moveq	#31, d0
+getBlk:	move.w	0(a0), (a1)+
 	move.w	0(a0), (a1)+
 	move.w	0(a0), (a1)+
 	move.w	0(a0), (a1)+
@@ -184,11 +286,13 @@ readBlock:
 	move.w	0(a0), (a1)+
 	move.w	0(a0), (a1)+
 	move.w	0(a0), (a1)+
-	move.w	0(a0), (a1)+
-	move.w  #0, 4(a0)
-	movem.l (sp)+, a0-a1
+	dbra	d0, getBlk
+
+	move.w	#TURBO, 4(a0)
+	movem.l (sp)+, a0-a1/d0-d1
 	rts
 
+/*----------------- Horizontal & vertical interrupt wrappers -----------------*/
 _hblank:
 	addq.w	#1, htimer
 	movem.l	d0-d1/a0-a1,-(sp)

@@ -103,25 +103,26 @@ begin
 			when others =>
 				sendData_out <= x"55";
 				if ( cpuByteWide_in = '1' ) then
-					-- We're sending single bytes rather than 16-bit words
+					-- We're sending single bytes rather than 16-bit words. Note
+					-- the lack of byte auto-read.
 					if ( cpuWrValid_in = '1' ) then
+						-- Write next word
 						sendData_out <= cpuWrData_in(15 downto 8);
-						sendValid_out <= '1';
-						byteWide_next <= '1';
-					elsif ( cpuRdStrobe_in = '1' ) then
-						sendData_out <= x"FF";
 						sendValid_out <= '1';
 						byteWide_next <= '1';
 					end if;
 				else
-					-- We're sending 16-bit words rather than single bytes
+					-- We're sending 16-bit words rather than single bytes. Note
+					-- the word auto-read.
 					if ( cpuWrValid_in = '1' ) then
+						-- Write next word
 						sstate_next <= S_WRITE_LSB;
 						sendData_out <= cpuWrData_in(15 downto 8);
 						sendValid_out <= '1';
 						lsb_next <= cpuWrData_in(7 downto 0);
 						byteWide_next <= '0';
 					elsif ( cpuRdStrobe_in = '1' ) then
+						-- Auto-fetch next word when reading
 						sstate_next <= S_WRITE_LSB;
 						sendData_out <= x"FF";
 						sendValid_out <= '1';

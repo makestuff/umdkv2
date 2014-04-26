@@ -148,3 +148,4 @@ NET "spiData_in"      LOC="P65"  | IOSTANDARD=LVTTL;
 # Timing constraint of FX2 48MHz clock "fx2Clk_in"
 #===============================================================================
 TIMESPEC "TS_clk" = PERIOD "fx2Clk_grp" 20.833 ns HIGH 50 %;
+TIMEGRP ram_grp OFFSET = OUT 15 ns AFTER "fx2Clk_in";
