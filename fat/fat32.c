@@ -43,10 +43,10 @@ static u32 getNextCluster(const struct FileSystem *fs, u32 cluster) {
 	u16 fatOffset;
 	fatAddress = fs->fatBeginAddress + (cluster * 4)/BYTES_PER_SECTOR;
 	if ( fatAddress != fatCacheAddress ) {
-		printf("Reading block 0x%08X into FAT cache\n", fatAddress);
+		//printf("Reading block 0x%08X into FAT cache\n", fatAddress);
 		fatCacheAddress = fatAddress;
 		sdReadBlocks(fatAddress, 1, fatCacheBytes);
-		dump(0, fatCacheBytes, BYTES_PER_SECTOR);
+		//dump(0, fatCacheBytes, BYTES_PER_SECTOR);
 	}
 	fatOffset = (cluster * 4) % BYTES_PER_SECTOR;
 	return readLong(fatCacheBytes + fatOffset);
@@ -124,25 +124,44 @@ cleanup:
 
 u8 fatListDirectory(struct FileSystem *fs, u32 dirCluster, FileNameCallback callback) {
 	const u16 entriesPerCluster = fatGetNumBytesPerCluster(fs)/FAT_DIRENT_SIZE;
-	char fileName[13]; // THISFILE.TXT\0: 8+1+3+1
-	u8 buffer[fatGetNumBytesPerCluster(fs)];
+	const u16 bytesPerCluster = fatGetNumBytesPerCluster(fs);
+	char fileName[20*13+1];
+	u8 buffer[bytesPerCluster];
 	const u8 *ptr = buffer;
 	u16 i = 0;
 	u8 retVal = 0;
 	u32 firstCluster;
+	u8 offset, last;
 	sdReadBlocks(fatGetClusterAddress(fs, dirCluster), fs->numSectorsPerCluster, buffer);
 	for ( ; ; ) {
 		if ( *ptr == 0x00 ) {
 			break;  // no more directory entries, so quit
-		}
-		printf("%d: %s %s\n", i, fatIsDeletedFile(ptr)?"isDeleted":"notDeleted", fatIsLongFilename(ptr)?"isLong":"notLong");
-		//dump(0, ptr, FAT_DIRENT_SIZE);
-		if ( !fatIsDeletedFile(ptr) && !fatIsLongFilename(ptr) ) {
-			getFileName(ptr, fileName);
-			if ( !fatIsVolumeName(ptr) ) {
-				firstCluster = fatGetFirstCluster(ptr);
-				callback(fileName, firstCluster, fatGetClusterAddress(fs, firstCluster), fatGetFileSize(ptr));
+		} else if ( fatIsLongFilename(ptr) ) {
+			offset = *ptr;
+			last = offset & 0x40;
+			offset &= 0x1F;
+			offset--;
+			offset *= 13;
+			fileName[offset+0] = ptr[1];
+			fileName[offset+1] = ptr[3];
+			fileName[offset+2] = ptr[5];
+			fileName[offset+3] = ptr[7];
+			fileName[offset+4] = ptr[9];
+			fileName[offset+5] = ptr[14];
+			fileName[offset+6] = ptr[16];
+			fileName[offset+7] = ptr[18];
+			fileName[offset+8] = ptr[20];
+			fileName[offset+9] = ptr[22];
+			fileName[offset+10] = ptr[24];
+			fileName[offset+11] = ptr[28];
+			fileName[offset+12] = ptr[30];
+			if ( last ) {
+				fileName[offset+13] = '\0';
 			}
+			//dump(0, ptr, FAT_DIRENT_SIZE);
+		} else if ( !fatIsDeletedFile(ptr) && !fatIsVolumeName(ptr) ) {
+			firstCluster = fatGetFirstCluster(ptr);
+			callback(fileName, firstCluster, fatGetClusterAddress(fs, firstCluster), fatGetFileSize(ptr));
 		}
 		ptr += FAT_DIRENT_SIZE;
 		i++;
