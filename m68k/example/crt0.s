@@ -22,6 +22,7 @@
 	.global	_hblank
 	.global	_vblank
 	.global	readBlock
+	.global	foo
 
 	.extern	htimer
 	.extern	vtimer
@@ -150,15 +151,17 @@ interrupt:
 	FLASH = 0x0004
 	SDCARD = 0x0008
 	
-	CMD_GO_IDLE_STATE     = 0
-	CMD_SEND_OP_COND      = 1
-	CMD_READ_SINGLE_BLOCK = 17
-	CMD_APP_SEND_OP_COND  = 41
-	CMD_APP_CMD           = 55
+	CMD_GO_IDLE_STATE        = 0
+	CMD_SEND_OP_COND         = 1
+	CMD_STOP_TRANSMISSION    = 12
+	CMD_READ_SINGLE_BLOCK    = 17
+	CMD_READ_MULTIPLE_BLOCKS = 18
+	CMD_APP_SEND_OP_COND     = 41
+	CMD_APP_CMD              = 55
 
-	TOKEN_SUCCESS         = 0x00
-	TOKEN_READ_SINGLE     = 0xFE
-	IN_IDLE_STATE         = (1<<0)
+	TOKEN_SUCCESS            = 0x00
+	TOKEN_READ_SINGLE        = 0xFE
+	IN_IDLE_STATE            = (1<<0)
 	
 delay:	move.w	d1, -(sp)
 dLoop:	dbra	d1, dLoop
@@ -205,10 +208,10 @@ fastCmd:
 	swap	d1
 	move.w	d1, 0(a0)
 	move.w	#0x95FF, 0(a0)	/* dummy CRC & return byte */
-L1:	move.b	#0xFF, 2(a0)	/* get response */
+1:	move.b	#0xFF, 2(a0)	/* get response */
 	move.b	2(a0), d0
 	cmp.b	#0xFF, d0
-	beq.s	L1
+	beq.s	1b
 	rts
 
 /*---------------------- Read the MBR from the SD-card -----------------------*/
@@ -265,17 +268,31 @@ L5:	move.b	#CMD_SEND_OP_COND, d0
 
 	/* Deselect SD-card */
 	move.w	#0, 4(a0)
-	bsr.w	delay
+	*movem.l (sp)+, a0-a1/d0-d1
+	*rts
+	
+
+doRead:
+	*movem.l a0-a1/d0-d1, -(sp)
+	*lea	0xA13000, a0
+	*lea	0xFF1000, a1
+
 	move.w	#(SDCARD | TURBO), 4(a0)
-	move.b	#CMD_READ_SINGLE_BLOCK, d0
-	moveq	#0, d1
+	*move.b	#CMD_READ_SINGLE_BLOCK, d0
+	move.b	#CMD_READ_MULTIPLE_BLOCKS, d0
+	*move.l	#0, d1
+	*move.l	#(0x800<<9), d1
+	move.l	#(9832<<9), d1
 	bsr.w	fastCmd
 
+	moveq	#15, d1
 waitReadToken:
+	lea	0xFF1000, a1
 	move.b	#0xFF, 2(a0)
 	cmp.b	#TOKEN_READ_SINGLE, 2(a0)
 	bne.s	waitReadToken
 
+foo:
 	move.w	#0xFFFF, 0(a0)
 	moveq	#31, d0
 getBlk:	move.w	0(a0), (a1)+
@@ -287,7 +304,12 @@ getBlk:	move.w	0(a0), (a1)+
 	move.w	0(a0), (a1)+
 	move.w	0(a0), (a1)+
 	dbra	d0, getBlk
-
+	dbra	d1, waitReadToken
+	*bra.s	waitReadToken
+	
+	move.b	#CMD_STOP_TRANSMISSION, d0
+	bsr.w	fastCmd
+	
 	move.w	#TURBO, 4(a0)
 	movem.l (sp)+, a0-a1/d0-d1
 	rts

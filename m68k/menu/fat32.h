@@ -10,7 +10,7 @@ struct FileSystem {
 	u32 fatBeginAddress;
 };
 
-typedef void (*FileNameCallback)(const char *, u32, u32, u32);
+typedef void (*FileNameCallback)(char *, u16, u32, u32);
 
 enum {
 	FAT_SUCCESS,
@@ -19,5 +19,7 @@ enum {
 
 u8 fatOpenFileSystem(struct FileSystem *fs);
 u8 fatListDirectory(struct FileSystem *fs, u32 dirCluster, FileNameCallback callback);
+u32 fatGetClusterLength(struct FileSystem *fs);
+u32 fatReadCluster(struct FileSystem *fs, u32 cluster, u8 *buffer);
 
 #endif

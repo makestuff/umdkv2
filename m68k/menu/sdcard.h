@@ -1,7 +1,7 @@
 #ifndef SDCARD_H
 #define SDCARD_H
 
-#include "intfoo.h"
+#include "types.h"
 
 #define LOG2_BYTES_PER_SECTOR 9
 #define BYTES_PER_SECTOR (1<<LOG2_BYTES_PER_SECTOR)

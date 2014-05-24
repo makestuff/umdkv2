@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <libdump.h>
 #include "fat32.h"
 
 static u32 readLong(const u8 *ptr) {
@@ -20,22 +18,6 @@ static u16 readWord(const u8 *ptr) {
 	return val;
 }
 
-static void getFileName(const u8 *dirPtr, char *fileName) {
-	u8 i = 9;
-	while ( --i && *dirPtr != 0x20 ) {
-		*fileName++ = *dirPtr++;
-	}
-	dirPtr += i;
-	if ( *dirPtr != 0x20 ) {
-		*fileName++ = '.';
-		i = 2;
-		do {
-			*fileName++ = *dirPtr++;
-		} while ( *dirPtr != 0x20 && i-- );
-	}
-	*fileName = '\0';
-}
-
 static u8 fatCacheBytes[BYTES_PER_SECTOR];
 static u32 fatCacheAddress;
 static u32 getNextCluster(const struct FileSystem *fs, u32 cluster) {
@@ -43,10 +25,8 @@ static u32 getNextCluster(const struct FileSystem *fs, u32 cluster) {
 	u16 fatOffset;
 	fatAddress = fs->fatBeginAddress + (cluster * 4)/BYTES_PER_SECTOR;
 	if ( fatAddress != fatCacheAddress ) {
-		//printf("Reading block 0x%08X into FAT cache\n", fatAddress);
 		fatCacheAddress = fatAddress;
 		sdReadBlocks(fatAddress, 1, fatCacheBytes);
-		//dump(0, fatCacheBytes, BYTES_PER_SECTOR);
 	}
 	fatOffset = (cluster * 4) % BYTES_PER_SECTOR;
 	return readLong(fatCacheBytes + fatOffset);
@@ -55,7 +35,6 @@ static u32 getNextCluster(const struct FileSystem *fs, u32 cluster) {
 static u8 getFirstPartitionAddress(u32 *address) {
 	u8 buffer[BYTES_PER_SECTOR];
 	sdReadBlocks(0, 1, buffer);
-	//dump(0, buffer, BYTES_PER_SECTOR);
 	if (
 		(buffer[446+4] == 0x0C || buffer[446+4] == 0x0B) &&
 		buffer[510] == 0x55 && buffer[511] == 0xAA ) 
@@ -92,7 +71,6 @@ u8 fatOpenFileSystem(struct FileSystem *fs) {
 	retVal = getFirstPartitionAddress(&vidAddress);
 	if ( retVal != FAT_SUCCESS ) goto cleanup;
 	sdReadBlocks(vidAddress, 1, buffer);
-	//dump(0, buffer, BYTES_PER_SECTOR);
 	fatCheckWord(BYTES_PER_SECTOR);                 // Word @ offset 11: BPB_BytsPerSec
 	fs->numSectorsPerCluster = *ptr++;              // Byte @ offset 13: BPB_SecPerClus
 	numRsvdSectors = readWord(ptr); ptr += 2;       // Word @ offset 14: BPB_RsvdSecCnt
@@ -125,13 +103,14 @@ cleanup:
 u8 fatListDirectory(struct FileSystem *fs, u32 dirCluster, FileNameCallback callback) {
 	const u16 entriesPerCluster = fatGetNumBytesPerCluster(fs)/FAT_DIRENT_SIZE;
 	const u16 bytesPerCluster = fatGetNumBytesPerCluster(fs);
-	char fileName[20*13+1];
+	char fileName[20*13+2];
 	u8 buffer[bytesPerCluster];
 	const u8 *ptr = buffer;
 	u16 i = 0;
 	u8 retVal = 0;
 	u32 firstCluster;
 	u8 offset, last;
+	u16 fnLen = 0;
 	sdReadBlocks(fatGetClusterAddress(fs, dirCluster), fs->numSectorsPerCluster, buffer);
 	for ( ; ; ) {
 		if ( *ptr == 0x00 ) {
@@ -157,11 +136,19 @@ u8 fatListDirectory(struct FileSystem *fs, u32 dirCluster, FileNameCallback call
 			fileName[offset+12] = ptr[30];
 			if ( last ) {
 				fileName[offset+13] = '\0';
+				fileName[offset+14] = '\0';
+				offset += 12;
+				while ( fileName[offset] == 0 || fileName[offset] == -1 ) {
+					fileName[offset] = 0;
+					offset--;
+				}
+				offset++;
+				fnLen = offset;
 			}
-			//dump(0, ptr, FAT_DIRENT_SIZE);
 		} else if ( !fatIsDeletedFile(ptr) && !fatIsVolumeName(ptr) ) {
 			firstCluster = fatGetFirstCluster(ptr);
-			callback(fileName, firstCluster, fatGetClusterAddress(fs, firstCluster), fatGetFileSize(ptr));
+			callback(fileName, fnLen, firstCluster, fatGetFileSize(ptr));
+			fnLen = 0;
 		}
 		ptr += FAT_DIRENT_SIZE;
 		i++;
@@ -176,4 +163,15 @@ u8 fatListDirectory(struct FileSystem *fs, u32 dirCluster, FileNameCallback call
 		}
 	}
 	return retVal;
+}
+
+u32 fatGetClusterLength(struct FileSystem *fs) {
+	u32 len = fs->numSectorsPerCluster;
+	len *= BYTES_PER_SECTOR;
+	return len;
+}
+
+u32 fatReadCluster(struct FileSystem *fs, u32 cluster, u8 *buffer) {
+	sdReadBlocks(fatGetClusterAddress(fs, cluster), fs->numSectorsPerCluster, buffer);
+	return getNextCluster(fs, cluster);
 }

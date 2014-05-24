@@ -49,24 +49,39 @@ boot:
 	move.w	#0x0000, SPICON(a0)	/* deselect flash & page in SDRAM */
 	move.b	0xA10001, d0
 	andi.b	#0x0f, d0
-	beq.s	noTMSS
+	beq.s	1f
 	move.l	#0x53454741, 0xA14000	/* write "SEGA" to TMSS register */
-noTMSS:
+1:
 	lea	monBase, a1
 	move.w	#0x0000, 0x400(a1)
 	move.w	#(bmTURBO | bmFLASH), SPICON(a0)
 	move.w	#0x0306, SPIDATW(a0)	/* load 0x200 words (1024 bytes) of */
 	move.w	#0x0100, SPIDATW(a0)	/* monitor code from flash address  */
 	move.w	#0xFFFF, SPIDATW(a0)	/* 0x60100 */
+
+	/* Load monitor */
 	move.w	#0x01FF, d0
-monLoop:
+2:
 	move.w	SPIDATW(a0), (a1)+
-	dbra	d0, monLoop
+	dbra	d0, 2b
+
+	/* Load menu program vectors + cart metadata (0x200 bytes) */
+	move.b	#0x40, 0xA130F3
+	lea	0x480000, a1
+	move.w	#0x00ff, d0
+3:
+	move.w	SPIDATW(a0), (a1)+
+	dbra	d0, 3b
+
+	/* Load menu program code (64KiB less 0x200 bytes) */
+	lea	0x420200, a1
+	move.w	#0x7eff, d0
+4:
+	move.w	SPIDATW(a0), (a1)+
+	dbra	d0, 4b
 	move.w	#0x0000, SPICON(a0)
 	suba.l	sp, sp
-	move.l	#monBase, a0
-	move.l	a0, -(sp)
-	move.w	sr, -(sp)
+	lea	0x420200, a0
 	jmp	(a0)
 
 
@@ -172,7 +187,7 @@ reset:
 	move.l	0x000004, a0		/* get reset vector */
 	move.w	#0, cmdFlag		/* tell host we're running */
 	jmp	(a0)			/* and...GO! */
-	
+
 jTab:
 	dc.l	step-lda2-2
 	dc.l	continue-lda2-2
