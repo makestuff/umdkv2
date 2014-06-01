@@ -1,5 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 
+# sudo apt-get install libmotif-dev
+# sudo apt-get install libx11-dev
+# sudo apt-get install libxext-dev
+# sudo apt-get install libxp-dev
+# sudo apt-get install libxmu-dev
 if [ ! -e ddd-3.3.12.tar.gz ]; then
     wget http://ftp.gnu.org/gnu/ddd/ddd-3.3.12.tar.gz
 fi

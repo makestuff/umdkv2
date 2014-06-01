@@ -8,6 +8,9 @@
 #sudo apt-get install automake
 #sudo apt-get install libtool
 #sudo apt-get install zlib1g-dev
+#sudo apt-get install gawk
+#sudo apt-get install gperf
+#sudo apt-get install libncurses5-dev
 export VERSION=1.19.0
 cd $HOME
 rm -rf crosstool-ng
