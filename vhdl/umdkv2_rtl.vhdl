@@ -122,8 +122,6 @@ architecture structural of umdkv2 is
 	signal mapRam_next : std_logic;
 
 	-- Trace data
-	--signal count       : unsigned(31 downto 0) := (others => '0');
-	--signal count_next  : unsigned(31 downto 0);
 	signal trc72Data   : std_logic_vector(71 downto 0);
 	signal trc72Valid  : std_logic;
 	signal trc72Ready  : std_logic;
@@ -153,8 +151,9 @@ architecture structural of umdkv2 is
 	signal recvValid   : std_logic;
 	signal recvReady   : std_logic;
 
-	-- Readable versions of external driven signals
+	-- Reset stuff
 	signal mdReset     : std_logic;
+	signal softReset   : std_logic;
 
 	-- Bits in the host config register reg1
 	constant RESET     : integer := 0;
@@ -470,6 +469,15 @@ begin
 			ramUDQM_out   => ramUDQM_out
 		);
 
+	-- Reset controller
+	reset_ctrl: entity work.reset_ctrl
+		port map(
+			clk_in       => clk_in,
+			hardReset_in => reg1(RESET),
+			softReset_in => softReset,
+			mdReset_out  => mdReset
+		);
+
 	reg1_next <=
 		h2fData_in(1 downto 0) when chanAddr_in = "0000001" and h2fValid_in = '1'
 		else reg1;
@@ -495,10 +503,6 @@ begin
 		'1'      when "0000001",
 		'0'      when others;
 
-	-- Drive MegaDrive RESET line
-	mdReset     <= reg1(RESET);  -- MD in reset when R1(0) high
-	mdReset_out <= mdReset;
-
 	-- Drive SPI chip-select lines
 	spiCS_out(FLASHCS) <=
 		'0' when mdCfg(CHIPSEL+1 downto CHIPSEL) = FLASH
@@ -517,6 +521,12 @@ begin
 	mapRam_next <=
 		'1' when regAddr = "010" and regWrValid = '1' and regWrData = x"0000"
 		else mapRam;
+
+	softReset <=
+		'1' when regAddr = "011" and regWrValid = '1' and regWrData = x"DEAD"
+		else '0';
+
+	mdReset_out <= mdReset;
 	
 	-- Dummy register reads
 	with regAddr select regRdData <=

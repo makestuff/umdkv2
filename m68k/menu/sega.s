@@ -222,9 +222,8 @@ _Reset:
 	move.w	(a0)+, d0
 1:	move.l	(a0)+, (a1)+
 	dbra	d0, 1b
-	move.l	0, sp
-	move.l	4, a0
-	jmp	(a0)
+	move.w	#0xDEAD, 0xA13006
+2:	bra.s	2b
 
 _Privilege_Violation:
         jsr exceptionDump

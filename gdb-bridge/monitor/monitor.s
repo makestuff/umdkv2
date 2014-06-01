@@ -182,11 +182,9 @@ wrLoop:	move.w	(a0)+, (a1)+
 	rts
 
 reset:
-	reset				/* reset peripherals */
-	move.l	0x000000, sp		/* set supervisor stack pointer */
-	move.l	0x000004, a0		/* get reset vector */
 	move.w	#0, cmdFlag		/* tell host we're running */
-	jmp	(a0)			/* and...GO! */
+	move.w	#0xDEAD, 0xA13006
+1:	bra.s	1b
 
 jTab:
 	dc.l	step-lda2-2
