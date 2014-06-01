@@ -15,6 +15,7 @@ elif [ $# = 2 ]; then
 	echo "load" >> /tmp/ddd.cmd
 	echo "tbreak main" >> /tmp/ddd.cmd
 	echo "set radix 16" >> /tmp/ddd.cmd
+	echo "set \$pc=0x400180" >> /tmp/ddd.cmd
 	echo "cont" >> /tmp/ddd.cmd
 	/usr/local/bin/ddd -geometry 827x660+600+830 --debugger /usr/local/bin/m68k-elf-gdb -x /tmp/ddd.cmd $2
 	#echo "RUN WITH: run -geometry 827x660+600+830 --debugger /usr/local/bin/m68k-elf-gdb -x /tmp/ddd.cmd $2"
