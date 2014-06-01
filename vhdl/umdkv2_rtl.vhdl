@@ -515,8 +515,7 @@ begin
 		else '0';
 
 	mapRam_next <=
-		'0' when mdReset = '1'
-		else '1' when regAddr = "010" and regWrValid = '1' and regWrData = x"0000"
+		'1' when regAddr = "010" and regWrValid = '1' and regWrData = x"0000"
 		else mapRam;
 	
 	-- Dummy register reads
