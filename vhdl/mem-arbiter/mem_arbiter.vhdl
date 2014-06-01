@@ -341,9 +341,12 @@ begin
 				state_next <= S_WRITE_OWNED_FINISH;
 				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
 				traceValid_out <= traceEnable_in;
-				mcCmd_out <= MC_WR;
-				mcAddr_out <= transAddr(addrReg);
-				mcData_out <= mdData_sync;
+				if ( addrReg(21) = '1' ) then
+					-- Only actually write to the 0x400000-0x7FFFFF range
+					mcCmd_out <= MC_WR;
+					mcAddr_out <= transAddr(addrReg);
+					mcData_out <= mdData_sync;
+				end if;
 			when S_WRITE_OWNED_FINISH =>
 				if ( mdDSW_sync = "11" and mcReady_in = '1' ) then
 					state_next <= S_IDLE;
