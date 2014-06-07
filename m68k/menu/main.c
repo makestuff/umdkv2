@@ -131,7 +131,7 @@ int main() {
 		if ( redraw ) {
 			VDP_clearPlan(VDP_PLAN_A, 1);
 			VDP_waitDMACompletion();
-			for ( i = 0; i < 28; i++ ) {
+			for ( i = 2; i < 26; i++ ) {
 				if ( i >= 11-choice && i < numFiles-choice+11 ) {
 					str = dirList[choice+i-11]->fileName;
 					if ( i == 11 ) {
