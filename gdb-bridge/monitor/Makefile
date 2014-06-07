@@ -1,13 +1,13 @@
 TOOLS = $(HOME)/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
 AS_FLAGS = -D -mcpu=68000 -march=68000 --bitwise-or --traditional-format --register-prefix-optional -L -g -al
 
-all: monitor.bin test.bin
-	@printf "\n\nRESET ADDRESS IS "
-	@python -c "print hex(0x$(shell nm monitor.elf | grep reset | awk '{print $$1}')+0x400000-0xf8)"
-	@printf "\n\n"
+all: test.bin monitor.bin
 
 %.elf: %.o
 	$(TOOLS)-ld -nostdlib -Ttext 0x000000 -A 68000 --defsym _start=0 -o $@ $+
+
+monitor.bin: monitor.elf
+	@printf "\n\nMONITOR RESET ADDRESS IS $$(python -c "import sys; sys.stdout.write(hex((0x$$(nm monitor.elf | grep reset | awk '{print $$1}')+0x400000-0xf8)))"); YOU NEED TO CONFIRM THAT THE RESET ADDRESS\nIN ddd.sh IS THE SAME!\n\n\n"
 
 %.bin: %.elf
 	$(TOOLS)-objcopy -O binary $< $@
