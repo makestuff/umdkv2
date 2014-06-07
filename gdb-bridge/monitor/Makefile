@@ -7,6 +7,7 @@ all: test.bin monitor.bin
 	$(TOOLS)-ld -nostdlib -Ttext 0x000000 -A 68000 --defsym _start=0 -o $@ $+
 
 monitor.bin: monitor.elf
+	$(TOOLS)-objcopy -O binary $< $@
 	@printf "\n\nMONITOR RESET ADDRESS IS $$(python -c "import sys; sys.stdout.write(hex((0x$$(nm monitor.elf | grep reset | awk '{print $$1}')+0x400000-0xf8)))"); YOU NEED TO CONFIRM THAT THE RESET ADDRESS\nIN ddd.sh IS THE SAME!\n\n\n"
 
 %.bin: %.elf
