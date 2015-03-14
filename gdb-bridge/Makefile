@@ -17,6 +17,11 @@
 ROOT    := $(realpath ../../../../..)
 DEPS    := fpgalink error
 TYPE    := exe
-SUBDIRS := monitor tests
+#SUBDIRS := monitor tests
+
+ifeq ($(OS),Windows_NT)
+	LINK_EXTRALIBS_REL := Ws2_32.lib
+	LINK_EXTRALIBS_DBG := $(LINK_EXTRALIBS_REL)
+endif
 
 -include $(ROOT)/common/top.mk

@@ -1,15 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/types.h> 
-#include <sys/socket.h>
-#include <netinet/in.h>
+#ifdef WIN32
+	#include <io.h>
+	#define close(x) closesocket(x)
+#else
+	#include <unistd.h>
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+#endif
 #include <makestuff.h>
 #include <libfpgalink.h>
 #include <liberror.h>
+#include "sock.h"
 #include "remote.h"
 #include "escape.h"
 #include "mem.h"
@@ -17,12 +20,12 @@
 
 void setDebug(bool);
 
-static int readMessage(int conn, char *buf, int bufSize) {
+static int readMessage(SOCKET conn, char *buf, int bufSize) {
 	char *ptr = buf;
 	const char *const bufEnd = buf + bufSize;
 	char dummy[2], ch;
 	do {
-		if ( read(conn, &ch, 1) <= 0 ) {
+		if ( recv(conn, &ch, 1, 0) <= 0 ) {
 			return -1;
 		}
 		*ptr++ = ch;
@@ -30,22 +33,10 @@ static int readMessage(int conn, char *buf, int bufSize) {
 	if ( ptr == bufEnd && ch != '#' ) {
 		return -3;
 	}
-	if ( read(conn, dummy, 2) != 2 ) {
+	if ( recv(conn, dummy, 2, 0) != 2 ) {
 		return -4;
 	}
-	return ptr - buf - 1;
-}
-
-static void setNonBlocking(int conn, bool nonBlocking) {
-    int flags = fcntl(conn, F_GETFL, 0);
-	if ( flags == -1 ) {
-		flags = 0;
-	}
-	if ( nonBlocking ) {
-		fcntl(conn, F_SETFL, flags | O_NONBLOCK);
-	} else {
-		fcntl(conn, F_SETFL, flags & ~O_NONBLOCK);
-	}
+	return (int)(ptr - buf - 1);
 }
 
 /*static bool isInterrupted(const struct I68K *cpu) {
@@ -65,7 +56,7 @@ void printMessage(const unsigned char *data, int length) {
 	printf("\n");
 }*/
 
-static int handleConnection(int conn, struct FLContext *handle) {
+static int handleConnection(SOCKET conn, struct FLContext *handle) {
 	char buffer[SOCKET_BUFFER_SIZE];
 	int bytesRead;
 	setNonBlocking(conn, false);
@@ -95,11 +86,18 @@ void usage(const char *prog) {
 
 int main(int argc, char *argv[]) {
 	int retVal = 0;
-	int server = -1;
-	int conn = -1;
-	socklen_t clientAddrLen;
+	SOCKET server = 0;
+	SOCKET conn = 0;
+	#ifdef WIN32
+		int clientAddrLen;
+	#else
+		socklen_t clientAddrLen;
+	#endif
 	struct sockaddr_in serverAddress = {0,};
 	struct sockaddr_in clientAddress = {0,};
+	#ifdef WIN32
+		WSADATA wsaData;
+	#endif
 	union {
 		uint32 ip4;
 		char ip[4];
@@ -276,6 +274,13 @@ int main(int argc, char *argv[]) {
 		CHECK_STATUS(uStatus, uStatus, cleanup);
 	}
 	if ( listenPortStr ) {
+		#ifdef WIN32
+			retVal = WSAStartup(MAKEWORD(2, 2), &wsaData);
+			if ( retVal != 0 ) {
+				printf("WSAStartup failed with error: %d\n", retVal);
+				FAIL(1, cleanup);
+			}
+		#endif
 		server = socket(AF_INET, SOCK_STREAM, 0);
 		if ( server < 0 ) {
 			errRenderStd(&error);
@@ -316,10 +321,10 @@ cleanup:
 		fprintf(stderr, "%s: %s\n", argv[0], error);
 		flFreeError(error);
 	}
-	if ( conn >= 0 ) {
+	if ( conn > 0 ) {
 		close(conn);
 	}
-	if ( server >= 0 ) {
+	if ( server > 0 ) {
 		close(server);
 	}
 	if ( handle ) {

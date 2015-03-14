@@ -724,7 +724,7 @@ int umdkContWait(
 	} *const u = (union RegUnion *)regs;
 	const uint8 *recvData;
 	FILE *file = NULL;
-
+	//printf("umdkContWait()\n");
 	if ( debug ) {
 		// Read RAM
 		status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);

@@ -9,8 +9,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
-#include <unistd.h>
+#ifdef WIN32
+	#include <io.h>
+#else
+	#include <unistd.h>
+	#include <sys/socket.h>
+#endif
 #include <makestuff.h>
+#include "sock.h"
 #include "remote.h"
 #include "mem.h"
 
@@ -113,7 +119,7 @@ static int cmdWriteRegister(const char *cmd, int conn, struct FLContext *handle)
 		status = umdkSetRegister(handle, reg, val, &g_error);
 		CHKERR(status);
 	}
-	return write(conn, VL(RESPONSE_OK));
+	return send(conn, VL(RESPONSE_OK), 0);
 }
 
 // Process GDB read-register command
@@ -127,9 +133,9 @@ static int cmdReadRegister(const char *cmd, int conn, struct FLContext *handle) 
 		CHKERR(status);
 		sprintf(response, "+$%08X#", val);
 		checksum(response + 2);
-		return write(conn, response, 13);
+		return send(conn, response, 13, 0);
 	} else {
-		return write(conn, VL(RESPONSE_EMPTY));
+		return send(conn, VL(RESPONSE_EMPTY), 0);
 	}
 }
 
@@ -146,7 +152,7 @@ static int cmdReadRegisters(int conn, struct FLContext *handle) {
 		regs.sr, regs.pc
 	);
 	checksum(response + 2);
-	return write(conn, response, 2+8*18+3);
+	return send(conn, response, 2+8*18+3, 0);
 }
 
 void printMessage(const unsigned char *data, int length);
@@ -178,7 +184,7 @@ static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 		status = umdkWriteBytes(handle, address, length, ioBuf, &g_error);
 		CHKERR(status);
 	}
-	return write(conn, VL(RESPONSE_OK));
+	return send(conn, VL(RESPONSE_OK), 0);
 }
 
 // Process GDB read-memory command
@@ -212,7 +218,7 @@ static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
 	*textPtr++ = '#';
 	*textPtr++ = hexDigits[checksum >> 4];
 	*textPtr++ = hexDigits[checksum & 0x0F];
-	return write(conn, msgBuf, (size_t)(textPtr-msgBuf));
+	return send(conn, msgBuf, (unsigned int)(textPtr-msgBuf), 0);
 }
 
 // Process GDB create-breakpoint command
@@ -248,7 +254,7 @@ static int cmdCreateBreakpoint(const char *cmd, int conn, struct FLContext *hand
 	CHKERR(status);
 	status = umdkWriteWord(handle, addr, ILLEGAL, &g_error);
 	CHKERR(status);
-	return write(conn, VL(RESPONSE_OK));
+	return send(conn, VL(RESPONSE_OK), 0);
 }
 
 // Process GDB delete-breakpoint command
@@ -268,7 +274,7 @@ static int cmdDeleteBreakpoint(const char *cmd, int conn, struct FLContext *hand
 			status = umdkWriteWord(handle, addr, breakpoints[i].save, &g_error);
 			CHKERR(status);
 			breakpoints[i].addr = 0x00000000;
-			return write(conn, VL(RESPONSE_OK));
+			return send(conn, VL(RESPONSE_OK), 0);
 		}
 	}
 	return -3;
@@ -279,7 +285,7 @@ static int cmdStep(int conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkStep(handle, &regs, &g_error);
 	CHKERR(status);
-	return write(conn, VL(RESPONSE_SIG));
+	return send(conn, VL(RESPONSE_SIG), 0);
 }
 
 // Process GDB execute-continue command
@@ -287,11 +293,11 @@ static int cmdContinue(int conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkContWait(handle, g_debug, &regs, &g_error);
 	CHKERR(status);
-	return write(conn, VL(RESPONSE_SIG));
+	return send(conn, VL(RESPONSE_SIG), 0);
 }
 
 // External interface: process incoming GDB RSP message
-int processMessage(const char *buf, int size, int conn, struct FLContext *handle) {
+int processMessage(const char *buf, SOCKET size, int conn, struct FLContext *handle) {
 	int returnCode = 0;
 	const char *const end = buf + size;
 	char ch = *buf;
@@ -368,11 +374,11 @@ int processMessage(const char *buf, int size, int conn, struct FLContext *handle
 
 	// Status:
 	case '?':
-		returnCode = write(conn, VL(RESPONSE_SIG));
+		returnCode = send(conn, VL(RESPONSE_SIG), 0);
 		break;
 	default:
 		// Everything else not supported:
-		returnCode = write(conn, VL(RESPONSE_EMPTY));
+		returnCode = send(conn, VL(RESPONSE_EMPTY), 0);
 	}
 	if ( returnCode < 0 ) {
 		printf("Message did not process correctly!\n");
