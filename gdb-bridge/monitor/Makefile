@@ -1,4 +1,4 @@
-TOOLS = $(HOME)/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
+TOOLS = $(HOME)/x-tools/m68k-megadrive-elf/bin/m68k-megadrive-elf
 AS_FLAGS = -D -mcpu=68000 -march=68000 --bitwise-or --traditional-format --register-prefix-optional -L -al
 
 all: test.bin monitor.bin
