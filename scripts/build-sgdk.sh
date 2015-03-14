@@ -251,7 +251,7 @@ font_pal_lib:
 EOF
 
 cat > src/Makefile <<EOF
-TOOLS = \$(HOME)/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
+TOOLS = \$(HOME)/x-tools/m68k-megadrive-elf/bin/m68k-megadrive-elf
 OPTS := -O1 -fomit-frame-pointer
 CC_FLAGS := -m68000 -Wall \$(OPTS) -fno-builtin-memset -fno-builtin-memcpy -I ../inc -I . -I ../res -c
 CC_SRCS := \$(wildcard *.c)

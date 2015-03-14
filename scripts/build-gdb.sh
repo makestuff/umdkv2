@@ -15,6 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+cd ${HOME}/src
+for i in share bin include; do
+	chmod u+w ${HOME}/x-tools/m68k-megadrive-elf/$i
+done
 if [ ! -e gdb-7.7.tar.bz2 ]; then
     wget http://ftp.gnu.org/gnu/gdb/gdb-7.7.tar.bz2
 fi
@@ -1245,9 +1249,9 @@ EOF
 cd gdb-7.7-ms1/
 mkdir gdb-build
 cd gdb-build/
-../configure --target=m68k-elf
+../configure --target=m68k-elf --prefix=${HOME}/x-tools/m68k-megadrive-elf
 make > build.log 2>&1
-sudo make install
+make install
 cat > dis68.c <<EOF
 /*
  * Code to test the 68K disassembler used by GDB. This should be extended
@@ -1463,4 +1467,6 @@ uint8 *readFile(const char *name, uint32 *length) {
 }
 EOF
 gcc -g -Wall -Wextra -Wundef -pedantic-errors -std=c99 -Wstrict-prototypes -Wno-missing-field-initializers -I../include -Ibfd -o dis68 dis68.c opcodes/libopcodes.a bfd/libbfd.a libiberty/libiberty.a -lz
-sudo cp dis68 /usr/local/bin/
+cp dis68 ${HOME}/x-tools/m68k-megadrive-elf/bin/
+cd ../..
+rm -rf gdb-7.7-ms1 gdb-7.7

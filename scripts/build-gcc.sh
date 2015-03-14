@@ -1,5 +1,20 @@
 #!/bin/sh
-
+#
+# Copyright (C) 2011 Chris McClelland
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 #sudo apt-get install cvs
 #sudo apt-get install lzma
 #sudo apt-get install bison
@@ -18,25 +33,27 @@ if [ -e x-tools ]; then
   chmod +w -R x-tools
   rm -rf x-tools
 fi
-mkdir -p ${HOME}/src
-mkdir crosstool-ng
+mkdir -p src crosstool-ng x-tools
 cd crosstool-ng
 wget http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-${VERSION}.tar.bz2
 bunzip2 -c crosstool-ng-${VERSION}.tar.bz2 | tar xf -
 cd crosstool-ng-${VERSION}/
-./configure --prefix=/usr/local
+./configure --prefix=${HOME}/crosstool-ng
 make
-sudo make install
+make install
 cd ..
 mkdir build
 cd build
-ct-ng m68k-unknown-elf
+${HOME}/crosstool-ng/bin/ct-ng m68k-unknown-elf
 patch .config <<EOF
 --- config.old	2014-04-02 12:40:43.552014000 +0100
 +++ config.new	2014-04-02 12:44:53.896750988 +0100
 @@ -99 +99 @@
 -CT_ARCH_CPU="cpu32"
 +CT_ARCH_CPU="68000"
+@@ -158 +158 @@
+-CT_TARGET_VENDOR="unknown"
++CT_TARGET_VENDOR="megadrive"
 @@ -201,2 +201,2 @@
 -# CT_ARCH_BINFMT_ELF is not set
 -CT_ARCH_BINFMT_FLAT=y
@@ -61,8 +78,8 @@ patch .config <<EOF
 +# CT_COMP_TOOLS_libtool is not set
 EOF
 unset LD_LIBRARY_PATH
-ct-ng build
+${HOME}/crosstool-ng/bin/ct-ng build
 echo
 echo
 echo 'Now you can do:'
-echo '  export PATH=${PATH}:${HOME}/x-tools/m68k-unknown-elf/bin'
+echo '  export PATH=${PATH}:${HOME}/x-tools/m68k-megadrive-elf/bin'

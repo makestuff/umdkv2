@@ -1,5 +1,5 @@
 TARGET := example
-TOOLS = $(HOME)/x-tools/m68k-unknown-elf/bin/m68k-unknown-elf
+TOOLS = $(HOME)/x-tools/m68k-megadrive-elf/bin/m68k-megadrive-elf
 
 CC_SRCS := $(wildcard *.c)
 CC_OBJS := $(CC_SRCS:%.c=%.o)
