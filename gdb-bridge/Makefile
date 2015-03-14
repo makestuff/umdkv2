@@ -17,7 +17,7 @@
 ROOT    := $(realpath ../../../../..)
 DEPS    := fpgalink error
 TYPE    := exe
-#SUBDIRS := monitor tests
+SUBDIRS := tests #monitor
 
 ifeq ($(OS),Windows_NT)
 	LINK_EXTRALIBS_REL := Ws2_32.lib
