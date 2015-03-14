@@ -252,10 +252,10 @@ int umdkDirectReadBytes(
 	// Reads from odd addresses or for odd lengths need to be done via a temporary buffer
 	if ( address & 1 ) {
 		// Odd address
-		tmpBuf = (uint8*)malloc(count);
-		CHECK_STATUS(!tmpBuf, 2, cleanup, "umdkDirectReadBytes(): Allocation error!");
 		wordAddr = address / 2;
 		wordCount = 1 + count / 2;
+		tmpBuf = (uint8*)malloc(2*wordCount);
+		CHECK_STATUS(!tmpBuf, 2, cleanup, "umdkDirectReadBytes(): Allocation error!");
 		
 		// Prepare the read command
 		prepMemCtrlCmd(0x00, wordAddr, command);
@@ -273,10 +273,10 @@ int umdkDirectReadBytes(
 		// Even address
 		if ( count & 1 ) {
 			// Even address, odd count
-			tmpBuf = (uint8*)malloc(count);
-			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkDirectReadBytes(): Allocation error!");
 			wordAddr = address / 2;
 			wordCount = 1 + count / 2;
+			tmpBuf = (uint8*)malloc(2*wordCount);
+			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkDirectReadBytes(): Allocation error!");
 			
 			// Prepare the read command
 			prepMemCtrlCmd(0x00, wordAddr, command);
@@ -935,9 +935,9 @@ int umdkIndirectReadBytes(
 	// Reads from odd addresses or for odd lengths need to be done via a temporary buffer
 	if ( address & 1 ) {
 		// Odd address
-		tmpBuf = (uint8*)malloc(count);
-		CHECK_STATUS(!tmpBuf, 2, cleanup, "umdkIndirectReadBytes(): Allocation error!");
 		wordCount = 1 + count / 2;
+		tmpBuf = (uint8*)malloc(2*wordCount);
+		CHECK_STATUS(!tmpBuf, 2, cleanup, "umdkIndirectReadBytes(): Allocation error!");
 
 		// Execute the read
 		status = umdkExecuteCommand(handle, CMD_READ, address-1, 2*wordCount, NULL, tmpBuf, NULL, error);
@@ -947,9 +947,9 @@ int umdkIndirectReadBytes(
 		// Even address
 		if ( count & 1 ) {
 			// Even address, odd count
-			tmpBuf = (uint8*)malloc(count);
-			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkIndirectReadBytes(): Allocation error!");
 			wordCount = 1 + count / 2;
+			tmpBuf = (uint8*)malloc(2*wordCount);
+			CHECK_STATUS(!tmpBuf, 5, cleanup, "umdkIndirectReadBytes(): Allocation error!");
 
 			// Execute the read
 			status = umdkExecuteCommand(handle, CMD_READ, address, 2*wordCount, NULL, tmpBuf, NULL, error);
