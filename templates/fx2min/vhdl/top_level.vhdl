@@ -22,7 +22,11 @@ library unisim;
 use unisim.vcomponents.all;
 
 entity top_level is
-	port(
+	generic (
+		MAPRAM_INIT    : std_logic := '0';
+		MAPRAM_FORCE   : boolean := false
+	);
+	port (
 		-- FX2 interface -----------------------------------------------------------------------------
 		fx2Clk_in      : in    std_logic;                    -- 48MHz clock from FX2
 		fx2FifoSel_out : out   std_logic;                    -- select FIFO: "0" for EP2OUT, "1" for EP6IN
@@ -88,7 +92,7 @@ architecture structural of top_level is
 begin
 	-- CommFPGA module
 	comm_fpga_fx2 : entity work.comm_fpga_fx2
-		port map(
+		port map (
 			clk_in         => sysClk000,
 			reset_in       => reset,
 			reset_out      => open,
@@ -114,7 +118,11 @@ begin
 
 	-- SDRAM application
 	umdkv2_app : entity work.umdkv2
-		port map(
+		generic map (
+			MAPRAM_INIT    => MAPRAM_INIT,
+			MAPRAM_FORCE   => MAPRAM_FORCE
+		)
+		port map (
 			clk_in         => sysClk000,
 			reset_in       => reset,
 			

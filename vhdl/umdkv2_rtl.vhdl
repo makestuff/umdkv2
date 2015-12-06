@@ -21,7 +21,11 @@ use ieee.numeric_std.all;
 use work.mem_ctrl_pkg.all;
 
 entity umdkv2 is
-	port(
+	generic (
+		MAPRAM_INIT    : std_logic;
+		MAPRAM_FORCE   : boolean
+	);
+	port (
 		clk_in         : in  std_logic;
 		reset_in       : in  std_logic;
 
@@ -118,7 +122,7 @@ architecture structural of umdkv2 is
 	signal reg1_next   : std_logic_vector(1 downto 0);
 	signal mdCfg       : std_logic_vector(3 downto 0) := (others => '0');
 	signal mdCfg_next  : std_logic_vector(3 downto 0);
-	signal mapRam      : std_logic := '0';
+	signal mapRam      : std_logic := MAPRAM_INIT;
 	signal mapRam_next : std_logic;
 
 	-- Trace data
@@ -177,12 +181,16 @@ begin
 			if ( reset_in = '1' ) then
 				reg1 <= "00";
 				mdCfg <= (others => '0');
-				mapRam <= '0';
+				mapRam <= MAPRAM_INIT;
 				--count <= (others => '0');
 			else
 				reg1 <= reg1_next;
 				mdCfg <= mdCfg_next;
-				mapRam <= mapRam_next;
+				if ( MAPRAM_FORCE ) then
+					mapRam <= MAPRAM_INIT;
+				else
+					mapRam <= mapRam_next;
+				end if;
 				--count <= count_next;
 			end if;
 		end if;
