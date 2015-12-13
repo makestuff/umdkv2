@@ -23,15 +23,15 @@ entity trace_fifo_wrapper is
 	port(
 		-- Clock
 		clk_in          : in  std_logic;
-		depth_out       : out std_logic_vector(14 downto 0);
+		depth_out       : out std_logic_vector(11 downto 0);
 
 		-- Data is clocked into the FIFO on each clock edge where both valid & ready are high
-		inputData_in    : in  std_logic_vector(7 downto 0);
+		inputData_in    : in  std_logic_vector(55 downto 0);
 		inputValid_in   : in  std_logic;
 		inputReady_out  : out std_logic;
 
 		-- Data is clocked out of the FIFO on each clock edge where both valid & ready are high
-		outputData_out  : out std_logic_vector(7 downto 0);
+		outputData_out  : out std_logic_vector(55 downto 0);
 		outputValid_out : out std_logic;
 		outputReady_in  : in  std_logic
 	);

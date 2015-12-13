@@ -126,16 +126,16 @@ architecture structural of umdkv2 is
 	signal mapRam_next : std_logic;
 
 	-- Trace data
-	signal trc72Data   : std_logic_vector(71 downto 0);
-	signal trc72Valid  : std_logic;
-	signal trc72Ready  : std_logic;
-	signal trc8Data    : std_logic_vector(7 downto 0);
-	signal trc8Valid   : std_logic;
-	signal trc8Ready   : std_logic;
+	signal tfiData     : std_logic_vector(55 downto 0);
+	signal tfiValid    : std_logic;
+	signal tfiReady    : std_logic;
+	signal tfoData     : std_logic_vector(55 downto 0);
+	signal tfoValid    : std_logic;
+	signal tfoReady    : std_logic;
 	signal trcData     : std_logic_vector(7 downto 0);
 	signal trcValid    : std_logic;
 	signal trcReady    : std_logic;
-	signal trcDepth    : std_logic_vector(14 downto 0);
+	signal tfDepth     : std_logic_vector(11 downto 0);
 
 	-- MD register writes
 	signal regAddr     : std_logic_vector(2 downto 0);
@@ -198,12 +198,12 @@ begin
 
 	-- Select values to return for each channel when the host is reading
 	with chanAddr_in select f2hData_out <=
-		rspData                     when "0000000",
-		"000000" & reg1             when "0000001",
-		trcData                     when "0000010",
-		"0" & trcDepth(14 downto 8) when "0000011",
-		trcDepth(7 downto 0)        when "0000100",
-		x"00"                       when others;
+		rspData                       when "0000000",
+		"000000" & reg1               when "0000001",
+		trcData                       when "0000010",
+		"0000" & tfDepth(11 downto 8) when "0000011",
+		tfDepth(7 downto 0)           when "0000100",
+		x"00"                         when others;
 
 	-- Generate valid signal for responding to host reads
 	with chanAddr_in select f2hValid_out <=
@@ -218,37 +218,38 @@ begin
 		f2hReady_in when chanAddr_in = "0000010"
 		else '0';
 
-	-- Trace Pipe 72->8 converter
-	trace_conv: entity work.conv_72to8
-		port map(
-			clk_in      => clk_in,
-			reset_in    => reset_in,
-			
-			data72_in   => trc72Data,
-			valid72_in  => trc72Valid,
-			ready72_out => trc72Ready,
-			
-			data8_out   => trc8Data,
-			valid8_out  => trc8Valid,
-			ready8_in   => trc8Ready
-		);
-
 	-- Trace FIFO
 	trace_fifo: entity work.trace_fifo_wrapper
 		port map(
 			clk_in          => clk_in,
-			depth_out       => trcDepth,
+			depth_out       => tfDepth,
 			
 			-- Production end
-			inputData_in    => trc8Data,
-			inputValid_in   => trc8Valid,
-			inputReady_out  => trc8Ready,
+			inputData_in    => tfiData,
+			inputValid_in   => tfiValid,
+			inputReady_out  => tfiReady,
 
 			-- Consumption end
-			outputData_out  => trcData,
-			outputValid_out => trcValid,
-			outputReady_in  => trcReady
+			outputData_out  => tfoData,
+			outputValid_out => tfoValid,
+			outputReady_in  => tfoReady
 		);
+
+	-- Trace Pipe 56->8 converter
+	trace_conv: entity work.conv_56to8
+		port map(
+			clk_in      => clk_in,
+			reset_in    => reset_in,
+
+			data56_in   => tfoData,
+			valid56_in  => tfoValid,
+			ready56_out => tfoReady,
+
+			data8_out   => trcData,
+			valid8_out  => trcValid,
+			ready8_in   => trcReady
+		);
+
 
 	-- Instantiate the memory arbiter for testing
 	spi_funnel: entity work.spi_funnel
@@ -433,11 +434,10 @@ begin
 			mdUDSW_in       => mdUDSW_in,
 
 			-- Trace pipe
+			traceReset_in   => reg1(RESET),
 			traceEnable_in  => reg1(TRACE),
-			traceData_out   => trc72Data,
-			traceValid_out  => trc72Valid,
-			--traceData_out   => open, --trc72Data,
-			--traceValid_out  => open  --trc72Valid
+			traceData_out   => tfiData,
+			traceValid_out  => tfiValid,
 
 			-- MegaDrive register writes & reads
 			regAddr_out     => regAddr,

@@ -54,8 +54,9 @@ entity mem_arbiter is
 		mdUDSW_in      : in    std_logic;
 
 		-- Trace pipe
+		traceReset_in  : in  std_logic;
 		traceEnable_in : in  std_logic;
-		traceData_out  : out std_logic_vector(71 downto 0);
+		traceData_out  : out std_logic_vector(55 downto 0);
 		traceValid_out : out std_logic;
 
 		-- MegaDrive registers
@@ -120,12 +121,16 @@ architecture rtl of mem_arbiter is
 	signal addrReg_next : std_logic_vector(22 downto 0);
 	signal mdAS         : std_logic;
 	signal mdAS_next    : std_logic;
-	signal count48      : unsigned(29 downto 0) := (others => '0');
-	signal count48_next : unsigned(29 downto 0);
-	signal memBank      : BankType := (
+	constant HB_MAX     : unsigned(11 downto 0) := (others => '1');
+	signal hbCount      : unsigned(11 downto 0) := (others => '0');
+	signal hbCount_next : unsigned(11 downto 0);
+	signal tsCount      : unsigned(12 downto 0) := (others => '0');
+	signal tsCount_next : unsigned(12 downto 0);
+	constant BANK_INIT  : BankType := (
 		"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
-		"01000", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
+		"11111", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
 	);
+	signal memBank      : BankType := BANK_INIT;
 	signal memBank_next : BankType;
 	signal bootInsn     : std_logic_vector(15 downto 0);
 
@@ -135,8 +140,8 @@ architecture rtl of mem_arbiter is
 	signal mdDSW_sync   : std_logic_vector(1 downto 0) := "11";
 	signal mdAddr_sync  : std_logic_vector(22 downto 0) := (others => '0');
 	signal mdData_sync  : std_logic_vector(15 downto 0) := (others => '0');
-	constant TR_RD      : std_logic_vector(1 downto 0) := "11";
-	constant TR_WB      : std_logic_vector(1 downto 0) := "00";
+	constant TR_RD      : std_logic_vector(2 downto 0) := "011";
+	constant TR_HB      : std_logic_vector(2 downto 0) := "100";
 begin
 	-- Infer registers
 	process(clk_in)
@@ -152,11 +157,9 @@ begin
 				mdDSW_sync <= "11";
 				mdData_sync <= (others => '0');
 				mdAS <= '1';
-				count48 <= (others => '0');
-				memBank <= (
-					"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
-					"11111", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
-				);
+				hbCount <= (others => '0');
+				tsCount <= (others => '0');
+				memBank <= BANK_INIT;
 			else
 				state <= state_next;
 				dataReg <= dataReg_next;
@@ -167,7 +170,8 @@ begin
 				mdDSW_sync <= mdUDSW_in & mdLDSW_in;
 				mdData_sync <= mdData_io;
 				mdAS <= mdAS_next;
-				count48 <= count48_next;
+				hbCount <= hbCount_next;
+				tsCount <= tsCount_next;
 				memBank <= memBank_next;
 			end if;
 		end if;
@@ -182,7 +186,7 @@ begin
 			mcReady_in, mcData_in, mcRDV_in,
 			ppCmd_in, ppAddr_in, ppData_in,
 			regMapRam_in, bootInsn, memBank, regRdData_in,
-			count48, traceEnable_in
+			hbCount, tsCount, traceEnable_in, traceReset_in
 		)
 		-- Function to generate SDRAM physical address using MD address and memBank (SSF2) regs
 		impure function transAddr(addr : std_logic_vector(22 downto 0)) return std_logic_vector is
@@ -222,6 +226,19 @@ begin
 		mdData_io <= (others => 'Z');
 		mdDriveBus_out <= '0';
 
+		-- Maybe send heartbeat message
+		if ( traceReset_in = '1' ) then
+			tsCount_next <= (others => '0');
+			hbCount_next <= (others => '0');
+		else
+			tsCount_next <= tsCount + 1;
+			hbCount_next <= hbCount + 1;
+		end if;
+		if ( hbCount = HB_MAX ) then
+			traceData_out <= TR_HB & std_logic_vector(tsCount) & x"000000" & x"0000";
+			traceValid_out <= traceEnable_in;
+		end if;
+
 		case state is
 			-- -------------------------------------------------------------------------------------
 			-- Whilst the MD is in reset, the SDRAM does auto-refresh, and the host has complete
@@ -257,12 +274,13 @@ begin
 					state_next <= S_READ_OWNED_NOP1;
 					if ( regMapRam_in = '1' ) then
 						dataReg_next <= mcData_in;
-						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mcData_in;
+						traceData_out <= TR_RD & std_logic_vector(tsCount) & addrReg & mdAS & mcData_in;
 					else
 						dataReg_next <= bootInsn;
-						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & bootInsn;
+						traceData_out <= TR_RD & std_logic_vector(tsCount) & addrReg & mdAS & bootInsn;
 					end if;
 					traceValid_out <= traceEnable_in;
+					hbCount_next <= (others => '0');  -- reset heartbeat
 				end if;
 
 			-- Give the host enough time for one I/O cycle, if it wants it.
@@ -311,8 +329,9 @@ begin
 			when S_READ_OTHER =>
 				if ( mdOE_sync = '1' ) then
 					state_next <= S_IDLE;
-					traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & addrReg & mdData_sync;
+					traceData_out <= TR_RD & std_logic_vector(tsCount) & addrReg & mdAS & mdData_sync;
 					traceValid_out <= traceEnable_in;
+					hbCount_next <= (others => '0');  -- reset heartbeat
 				end if;
 
 			-- -------------------------------------------------------------------------------------
@@ -339,8 +358,9 @@ begin
 			--
 			when S_WRITE_OWNED_EXEC =>
 				state_next <= S_WRITE_OWNED_FINISH;
-				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceData_out <= '0' & mdDSW_sync & std_logic_vector(tsCount) & addrReg & mdAS & mdData_sync;
 				traceValid_out <= traceEnable_in;
+				hbCount_next <= (others => '0');  -- reset heartbeat
 				if ( addrReg(21) = '1' ) then
 					-- Only actually write to the 0x400000-0x7FFFFF range
 					mcCmd_out <= MC_WR;
@@ -377,8 +397,9 @@ begin
 			--
 			when S_WRITE_OTHER_EXEC =>
 				state_next <= S_WRITE_OTHER_FINISH;
-				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceData_out <= '0' & mdDSW_sync & std_logic_vector(tsCount) & addrReg & mdAS & mdData_sync;
 				traceValid_out <= traceEnable_in;
+				hbCount_next <= (others => '0');  -- reset heartbeat
 			when S_WRITE_OTHER_FINISH =>
 				if ( mdDSW_sync = "11" ) then
 					state_next <= S_IDLE;
@@ -408,8 +429,9 @@ begin
 			--
 			when S_WRITE_REG_EXEC =>
 				state_next <= S_WRITE_REG_FINISH;
-				traceData_out <= std_logic_vector(count48) & mdAS & mdDSW_sync & addrReg & mdData_sync;
+				traceData_out <= '0' & mdDSW_sync & std_logic_vector(tsCount) & addrReg & mdAS & mdData_sync;
 				traceValid_out <= traceEnable_in;
+				hbCount_next <= (others => '0');  -- reset heartbeat
 				if ( addrReg(6 downto 3) = "1111" ) then
 					memBank_next(to_integer(unsigned(mdData_sync(6) & addrReg(2 downto 0)))) <= mdData_sync(4 downto 0);
 				elsif ( addrReg(6 downto 3) = "0000" ) then
@@ -442,8 +464,9 @@ begin
 						regAddr_out <= mdAddr_sync(2 downto 0);
 						dataReg_next <= regRdData_in;
 						regRdStrobe_out <= '1';
-						traceData_out <= std_logic_vector(count48) & mdAS & TR_RD & mdAddr_sync & regRdData_in;
+						traceData_out <= TR_RD & std_logic_vector(tsCount) & mdAddr_sync & mdAS_sync & regRdData_in;
 						traceValid_out <= traceEnable_in;
+						hbCount_next <= (others => '0');  -- reset heartbeat
 					elsif ( mdAddr_sync(22) = '0' ) then
 						-- MD is doing an owned read (i.e in our address ranges)
 						state_next <= S_READ_OWNED_WAIT;
@@ -523,6 +546,5 @@ begin
 	-- trace, but you can see the infinite bra.s -2 loop executing OK.
 	
 	mdDTACK_out <= '0';  -- for now, just rely on MD's auto-DTACK
-	count48_next <= count48 + 1;
 	
 end architecture;

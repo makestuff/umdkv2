@@ -500,6 +500,7 @@ int main(int argc, const char *argv[]) {
 			CHECK_STATUS(status, 30, cleanup);
 			fwrite(recvData, 1, actualLength, file);
 			printf(".");
+			fflush(stdout);
 		} while ( !(sigIsRaised() || (haveCount && --numBlocks == 0)) );
 		if ( haveCount ) {
 			printf("\nFinished!\n");

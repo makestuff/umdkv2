@@ -35,7 +35,7 @@ delay:	move.w	d1, -(sp)
 /*------------------------------------------------------------------------------
  * slowCmd() sends the command in d0.b with zero argument, and with sufficient
  * delay between bytes to work in the 400kHz mode (necessary during init). It
- * relies on d1.w containing the delay calibration (should be 7). On exit, d0.b
+ * relies on d1.w containing the delay calibration (should be 8). On exit, d0.b
  * contains the response byte.
  */
 slowCmd:
@@ -86,7 +86,7 @@ initRetry:
 	/* 256 clocks at 400kHz with DI low */
 	move.w	#0, SPICON(a0)
 	moveq	#31, d0		/* 32*8 = 256 */
-	moveq	#7, d1		/* enough delay for one byte @400kHz */
+	moveq	#8, d1		/* enough delay for one byte @400kHz */
 0:	move.b	#0x00, SPIDATB(a0)
 	bsr.w	delay
 	dbra	d0, 0b
