@@ -74,6 +74,12 @@ architecture rtl of mem_arbiter is
 		S_RESET,  -- MD in reset, host has access to SDRAM
 		S_IDLE,   -- wait for mdOE_sync to go low when A22='0', indicating a MD cart read
 
+		-- Forced refresh loop on startup
+		S_FORCE_REFRESH_EXEC,
+		S_FORCE_REFRESH_NOP1,
+		S_FORCE_REFRESH_NOP2,
+		S_FORCE_REFRESH_NOP3,
+
 		-- Owned read
 		S_READ_OWNED_WAIT,
 		S_READ_OWNED_NOP1,
@@ -258,9 +264,27 @@ begin
 				ppReady_out <= mcReady_in;  
 				ppRDV_out <= mcRDV_in;
 
-				-- Proceed when host releases MD from reset
-				if ( mdReset_in = '0' ) then
-					state_next <= S_IDLE;
+				-- Proceed when host or the soft-reset sequence releases MD from reset
+				if ( mdReset_in = '0' and mcReady_in = '1' ) then
+					state_next <= S_FORCE_REFRESH_EXEC;
+				end if;
+
+			-- -------------------------------------------------------------------------------------
+			-- There's a delay of ~100ms between deasserting reset and the first instruction-fetch,
+			-- which can be used profitably by forcing a series of SDRAM refresh cycles.
+			--
+			when S_FORCE_REFRESH_EXEC =>
+				mcCmd_out <= MC_REF;  -- issue refresh cycle
+				state_next <= S_FORCE_REFRESH_NOP1;
+			when S_FORCE_REFRESH_NOP1 =>
+				state_next <= S_FORCE_REFRESH_NOP2;
+			when S_FORCE_REFRESH_NOP2 =>
+				state_next <= S_FORCE_REFRESH_NOP3;
+			when S_FORCE_REFRESH_NOP3 =>
+				if ( mdOE_sync = '1' ) then
+					state_next <= S_FORCE_REFRESH_EXEC;  -- loop back for another refresh
+				else
+					state_next <= S_IDLE;                -- 68000 has started fetching
 				end if;
 
 			-- -------------------------------------------------------------------------------------
