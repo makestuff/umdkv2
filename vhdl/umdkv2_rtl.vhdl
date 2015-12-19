@@ -22,8 +22,10 @@ use work.mem_ctrl_pkg.all;
 
 entity umdkv2 is
 	generic (
+		RESET_INIT     : std_logic;
 		MAPRAM_INIT    : std_logic;
-		MAPRAM_FORCE   : boolean
+		MAPRAM_FORCE   : boolean;
+		NO_MONITOR     : boolean
 	);
 	port (
 		clk_in         : in  std_logic;
@@ -118,7 +120,7 @@ architecture structural of umdkv2 is
 	signal mcRDV       : std_logic;
 
 	-- Registers implementing the channels
-	signal reg1        : std_logic_vector(1 downto 0) := "00";
+	signal reg1        : std_logic_vector(1 downto 0) := '0' & RESET_INIT;
 	signal reg1_next   : std_logic_vector(1 downto 0);
 	signal mdCfg       : std_logic_vector(3 downto 0) := (others => '0');
 	signal mdCfg_next  : std_logic_vector(3 downto 0);
@@ -179,10 +181,9 @@ begin
 	begin
 		if ( rising_edge(clk_in) ) then
 			if ( reset_in = '1' ) then
-				reg1 <= "00";
+				reg1 <= '0' & RESET_INIT;
 				mdCfg <= (others => '0');
 				mapRam <= MAPRAM_INIT;
-				--count <= (others => '0');
 			else
 				reg1 <= reg1_next;
 				mdCfg <= mdCfg_next;
@@ -191,7 +192,6 @@ begin
 				else
 					mapRam <= mapRam_next;
 				end if;
-				--count <= count_next;
 			end if;
 		end if;
 	end process;
@@ -220,7 +220,7 @@ begin
 
 	-- Trace FIFO
 	trace_fifo: entity work.trace_fifo_wrapper
-		port map(
+		port map (
 			clk_in          => clk_in,
 			depth_out       => tfDepth,
 			
@@ -237,7 +237,7 @@ begin
 
 	-- Trace Pipe 56->8 converter
 	trace_conv: entity work.conv_56to8
-		port map(
+		port map (
 			clk_in      => clk_in,
 			reset_in    => reset_in,
 
@@ -253,7 +253,7 @@ begin
 
 	-- Instantiate the memory arbiter for testing
 	spi_funnel: entity work.spi_funnel
-		port map(
+		port map (
 			clk_in         => clk_in,
 			reset_in       => '0',
 
@@ -277,12 +277,12 @@ begin
 
 	-- SPI master
 	spi_master : entity work.spi_master
-		generic map(
+		generic map (
 			SLOW_COUNT => "111011",  -- spiClk = sysClk/120 (400kHz @48MHz)
 			FAST_COUNT => "000000",  -- spiClk = sysClk/2 (24MHz @48MHz)
 			BIT_ORDER  => '1'        -- MSB first
 		)
-		port map(
+		port map (
 			reset_in      => '0',
 			clk_in        => clk_in,
 			
@@ -306,11 +306,11 @@ begin
 	
 	-- Command Pipe FIFO
 	cmd_fifo: entity work.fifo
-		generic map(
+		generic map (
 			WIDTH => 8,
 			DEPTH => 2
 		)
-		port map(
+		port map (
 			clk_in          => clk_in,
 			reset_in        => '0',
 			depth_out       => open,
@@ -328,7 +328,7 @@ begin
 
 	-- Command Pipe 8->16 converter
 	cmd_conv: entity work.conv_8to16
-		port map(
+		port map (
 			clk_in       => clk_in,
 			reset_in     => '0',
 			data8_in     => cmd8Data,
@@ -341,7 +341,7 @@ begin
 
 	-- Response Pipe 16->8 converter
 	rsp_conv: entity work.conv_16to8
-		port map(
+		port map (
 			clk_in      => clk_in,
 			reset_in    => '0',
 			data16_in   => rsp16Data,
@@ -354,11 +354,11 @@ begin
 
 	-- Response Pipe FIFO
 	rsp_fifo: entity work.fifo
-		generic map(
+		generic map (
 			WIDTH => 8,
 			DEPTH => 2
 		)
-		port map(
+		port map (
 			clk_in          => clk_in,
 			reset_in        => '0',
 			depth_out       => open,
@@ -376,7 +376,7 @@ begin
 
 	-- Memory Pipe Unit (connects command & response pipes to the memory controller)
 	mem_pipe: entity work.mem_pipe
-		port map(
+		port map (
 			clk_in       => clk_in,
 			reset_in     => reset_in,
 
@@ -401,7 +401,10 @@ begin
 
 	-- Instantiate the memory arbiter unit
 	mem_arbiter: entity work.mem_arbiter
-		port map(
+		generic map (
+			NO_MONITOR      => NO_MONITOR
+		)
+		port map (
 			clk_in          => clk_in,
 			reset_in        => reset_in,
 
@@ -450,12 +453,12 @@ begin
 	
 	-- Memory controller (connects SDRAM to Memory Pipe Unit)
 	mem_ctrl: entity work.mem_ctrl
-		generic map(
+		generic map (
 			INIT_COUNT     => "1" & x"2C0",  --\
 			REFRESH_DELAY  => "0" & x"300",  -- Much longer in real hardware!
 			REFRESH_LENGTH => "0" & x"002"   --/
 		)
-		port map(
+		port map (
 			clk_in       => clk_in,
 			reset_in     => reset_in,
 
@@ -479,7 +482,7 @@ begin
 
 	-- Reset controller
 	reset_ctrl: entity work.reset_ctrl
-		port map(
+		port map (
 			clk_in       => clk_in,
 			hardReset_in => reg1(RESET),
 			softReset_in => softReset,

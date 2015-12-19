@@ -23,8 +23,10 @@ use unisim.vcomponents.all;
 
 entity top_level is
 	generic (
+		RESET_INIT     : std_logic := '0';
 		MAPRAM_INIT    : std_logic := '0';
-		MAPRAM_FORCE   : boolean := false
+		MAPRAM_FORCE   : boolean := false;
+		NO_MONITOR     : boolean := false
 	);
 	port (
 		-- FX2 interface -----------------------------------------------------------------------------
@@ -119,8 +121,10 @@ begin
 	-- SDRAM application
 	umdkv2_app : entity work.umdkv2
 		generic map (
+			RESET_INIT     => RESET_INIT,
 			MAPRAM_INIT    => MAPRAM_INIT,
-			MAPRAM_FORCE   => MAPRAM_FORCE
+			MAPRAM_FORCE   => MAPRAM_FORCE,
+			NO_MONITOR     => NO_MONITOR
 		)
 		port map (
 			clk_in         => sysClk000,
@@ -163,7 +167,7 @@ begin
 
 	-- Generate the system clock from the FX2LP's 48MHz clock
 	clk_gen: entity work.clk_gen
-		port map(
+		port map (
 			clk_in     => fx2Clk_in,
 			clk000_out => sysClk000,
 			clk180_out => sysClk180,
@@ -172,7 +176,7 @@ begin
 
 	-- Drive system clock and sync reset
 	clk_drv: ODDR2
-		port map(
+		port map (
 			D0 => '1',
 			D1 => '0',
 			C0 => sysClk000,

@@ -1,0 +1,35 @@
+First, add the Xilinx tools to your PATH:
+
+  export XILINX=/opt/Xilinx/14.7/ISE_DS/ISE
+  export PATH=${XILINX}/bin/lin64:${PATH}
+
+So, you can now run the build, to generate a "production" FPGA binary:
+
+  ../../../../bin/hdlmake.py -t ../templates/fx2min/vhdl -b lx9r3
+
+The result will be a "top_level.bin" file, which you can load into the LX9's
+flash using spi-talk.xsvf and the gordon tool:
+
+  ${HOME}/umdkv2-bin/flcli -v 1d50:602b -p J:A7A0A3A1:${HOME}/umdkv2-bin/spi-talk.xsvf
+  ${HOME}/umdkv2-bin/gordon -v 1d50:602b -t indirect:1 -w top_level.bin:0
+
+Alternatively, you can generate a "test" FPGA binary, which is suitable for
+doing an initial test of a UMDK cart (checking for solder bridges, etc):
+
+  ../../../../bin/hdlmake.py -t ../templates/fx2min/vhdl -b lx9r3 -p fpga -s "RESET_INIT='1' MAPRAM_INIT='1' MAPRAM_FORCE=true NO_MONITOR=true"
+
+The result is an fpga.xsvf file, which you can load using the flcli tool.
+
+  wget -q https://dl.dropboxusercontent.com/u/80983693/umdkv2/sigtest.bin.bz2
+  bunzip2 sigtest.bin.bz2
+  ${HOME}/umdkv2-bin/loader -w sigtest.bin:0 -x 2 -t trace.bin:2048
+  ${HOME}/umdkv2-bin/logread trace.bin | grep -v HEARTBEAT | head -8388250 | awk '{print $2$3$4$5}' | md5sum
+
+We expect to see an MD5 of d5a670db486de8597e214c6849fdfacb. If you get
+something else, it means your UMDK cart is not operating correctly. Try saving
+your trace data to a file and comparing it with the expected trace:
+
+  ${HOME}/umdkv2-bin/logread trace.bin | grep -v HEARTBEAT | head -8388250 | awk '{print $2$3$4$5}' > result.txt
+  wget -q https://dl.dropboxusercontent.com/u/80983693/umdkv2/expected.txt.bz2
+  bunzip2 expected.txt.bz2
+  diff expected.txt result.txt | less

@@ -21,7 +21,10 @@ use ieee.numeric_std.all;
 use work.mem_ctrl_pkg.all;
 
 entity mem_arbiter is
-	port(
+	generic (
+		NO_MONITOR     : boolean
+	);
+	port (
 		clk_in         : in  std_logic;
 		reset_in       : in  std_logic;
 
@@ -132,10 +135,16 @@ architecture rtl of mem_arbiter is
 	signal hbCount_next : unsigned(11 downto 0);
 	signal tsCount      : unsigned(12 downto 0) := (others => '0');
 	signal tsCount_next : unsigned(12 downto 0);
-	constant BANK_INIT  : BankType := (
-		"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
-		"11111", "01001", "01010", "01011", "01100", "01101", "01110", "01111"
-	);
+	function BANK_INIT return BankType is
+	begin
+		if ( NO_MONITOR ) then return (
+			"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
+			"01000", "01001", "01010", "01011", "01100", "01101", "01110", "01111");
+		else return (
+			"00000", "00001", "00010", "00011", "00100", "00101", "00110", "00111",
+			"11111", "01001", "01010", "01011", "01100", "01101", "01110", "01111");
+		end if;
+	end function;
 	signal memBank      : BankType := BANK_INIT;
 	signal memBank_next : BankType;
 	signal bootInsn     : std_logic_vector(15 downto 0);
