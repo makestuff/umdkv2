@@ -18,8 +18,6 @@
 #include "mem.h"
 #include "args.h"
 
-void setDebug(bool);
-
 static int readMessage(SOCKET conn, char *buf, int bufSize) {
 	char *ptr = buf;
 	const char *const bufEnd = buf + bufSize;
@@ -73,14 +71,13 @@ static int handleConnection(SOCKET conn, struct FLContext *handle) {
 }
 
 void usage(const char *prog) {
-	printf("Usage: %s [-crd] [-w <file:addr>] [-l <listenPort>] [-b <brkAddr>]\n\n", prog);
+	printf("Usage: %s [-crh] [-w <file:addr>] [-l <listenPort>] [-b <brkAddr>]\n\n", prog);
 	printf("Interact with the UMDKv2 cartridge.\n\n");
 	printf("  -w <file:addr>   write the file to the given address\n");
 	printf("  -l <listenPort>  listen for GDB connections on the given port\n");
 	printf("  -b <brkAddr>     address to use to interrupt execution\n");
 	printf("  -c               continue execution\n");
 	printf("  -r               simulate a reset\n");
-	printf("  -d               enable GDB RAM dumps & tracing\n");
 	printf("  -h               print this help and exit\n");
 }
 
@@ -106,7 +103,7 @@ int main(int argc, char *argv[]) {
 	FLStatus fStatus;
 	int uStatus;
 	struct FLContext *handle = NULL;
-	bool doCont = false, doReset = false, doDebug = false;
+	bool doCont = false, doReset = false;
 	const char *wrFile = NULL, *listenPortStr = NULL, *brkAddrStr = NULL;
 	char *loadFile = NULL;
 	uint8 *loadData = NULL;
@@ -140,9 +137,6 @@ int main(int argc, char *argv[]) {
 			break;
 		case 'r':
 			doReset = true;
-			break;
-		case 'd':
-			doDebug = true;
 			break;
 		default:
 			invalid(prog, argv[0][1]);
@@ -209,7 +203,6 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "Invalid argument to option -l <listenPort>\n");
 			FAIL(15, cleanup);
 		}
-		printf("listenPort = %d\n", listenPort);
 	}
 	if ( brkAddrStr ) {
 		const char *ptr = brkAddrStr;
@@ -230,9 +223,6 @@ int main(int argc, char *argv[]) {
 	fStatus = flSelectConduit(handle, 0x01, NULL);
 	CHECK_STATUS(fStatus, 1, cleanup);
 
-	// Maybe enable debugging
-	setDebug(doDebug);
-
 	// Maybe load some data
 	if ( loadData ) {
 		uint16 cmdFlag, oldOp;
@@ -245,7 +235,7 @@ int main(int argc, char *argv[]) {
 			CHECK_STATUS(uStatus, uStatus, cleanup);
 			uStatus = umdkDirectReadWord(handle, vbAddr, &oldOp, NULL);
 			CHECK_STATUS(uStatus, uStatus, cleanup);
-			printf("vbAddr = 0x%06X, opCode = 0x%04X\n", vbAddr, oldOp);
+			//printf("vbAddr = 0x%06X, opCode = 0x%04X\n", vbAddr, oldOp);
 			
 			// Replace illegal instruction vector
 			uStatus = umdkDirectWriteLong(handle, IL_VEC, MONITOR, NULL);

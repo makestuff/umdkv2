@@ -147,6 +147,10 @@ extern "C" {
 		struct FLContext *handle, uint32 address, uint32 *pValue, const char **error
 	) WARN_UNUSED_RESULT;
 
+	int umdkDumpRAM(
+		struct FLContext *handle, const char *fileName, const char **error
+	) WARN_UNUSED_RESULT;
+
 	// ---------------------------------------------------------------------------------------------
 	// Control flow operations
 	//
@@ -155,11 +159,15 @@ extern "C" {
 	) WARN_UNUSED_RESULT;
 
 	int umdkContWait(
-		struct FLContext *handle, bool debug, struct Registers *regs, const char **error
+		struct FLContext *handle, struct Registers *regs, const char **error
 	) WARN_UNUSED_RESULT;
 
 	int umdkContinue(
 		struct FLContext *handle, const char **error
+	) WARN_UNUSED_RESULT;
+
+	int umdkOpenTrace(
+		const char *fileName
 	) WARN_UNUSED_RESULT;
 
 	// ---------------------------------------------------------------------------------------------

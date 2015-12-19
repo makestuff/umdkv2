@@ -707,12 +707,49 @@ cleanup:
 	return retVal;
 }
 
+// Dump the contents of WRAM to the specified file.
+//
+int umdkDumpRAM(struct FLContext *handle, const char *fileName, const char **error) {
+	int retVal = 0, status;
+	uint8 tmpData[65536];
+	FILE *file = NULL;
+
+	// Read RAM
+	status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
+	CHECK_STATUS(status, status, cleanup);
+
+	// Save it
+	file = fopen(fileName, "wb");
+	CHECK_STATUS(!file, 13, cleanup, "umdkDumpRAM(): Unable to open %s for writing!", fileName);
+	fwrite(tmpData, 1, 65536, file);
+cleanup:
+	if ( file ) {
+		fclose(file);
+	}
+	return retVal;
+}
+
+// File to write trace information to
+static FILE *g_traceFile = NULL;
+
+int umdkOpenTrace(const char *fileName) {
+	if ( g_traceFile ) {
+		fclose(g_traceFile);
+	}
+	g_traceFile = fopen(fileName, "wb");
+	if ( g_traceFile == NULL ) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 // Tell the monitor to continue execution with the (possibly new) register/memory context, until
 // a breakpoint is hit. If there is no breakpoint in the execution-path, this function will wait
 // forever.
 //
 int umdkContWait(
-	struct FLContext *handle, bool debug, struct Registers *regs, const char **error)
+	struct FLContext *handle, struct Registers *regs, const char **error)
 {
 	int retVal = 0, status, i;
 	uint8 tmpData[65536];
@@ -725,24 +762,6 @@ int umdkContWait(
 		uint8 bytes[18*4];
 	} *const u = (union RegUnion *)regs;
 	const uint8 *recvData;
-	FILE *file = NULL;
-	//printf("umdkContWait()\n");
-	if ( debug ) {
-		// Read RAM
-		status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
-		CHECK_STATUS(status, status, cleanup);
-		
-		// Save it
-		file = fopen("ramBefore.bin", "wb");
-		CHECK_STATUS(!file, 13, cleanup, "umdkContWait(): Unable to open ramBefore.bin for writing!");
-		fwrite(tmpData, 1, 65536, file);
-		fclose(file);
-		file = NULL;
-		
-		// Open trace log
-		file = fopen("trace.log", "wb");
-		CHECK_STATUS(!file, 13, cleanup, "umdkContWait(): Unable to open trace.log for writing!");
-	}
 
 	// Get address of VDP vertical interrupt routine and its first opcode
 	status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, error);
@@ -754,7 +773,7 @@ int umdkContWait(
 	status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, error);
 	CHECK_STATUS(status, status, cleanup);
 
-	if ( debug ) {
+	if ( g_traceFile ) {
 		// Disable tracing (if any) & clear junk from trace FIFO
 		tmpData[0] = 0x00;
 		status = flWriteChannel(handle, 0x01, 1, tmpData, error);
@@ -796,7 +815,7 @@ int umdkContWait(
 	status = umdkDirectWriteWord(handle, CB_FLAG, CF_CMD, error);
 	CHECK_STATUS(status, status, cleanup);
 
-	if ( debug ) {
+	if ( g_traceFile ) {
 		// Submit 1st read for some trace data
 		status = flReadChannelAsyncSubmit(handle, 2, CHUNK_SIZE, NULL, error);
 		CHECK_STATUS(status, 28, cleanup);
@@ -812,7 +831,7 @@ int umdkContWait(
 			CHECK_STATUS(status, status, cleanup);
 		}
 
-		if ( debug ) {
+		if ( g_traceFile ) {
 			// Submit a read for some trace data
 			status = flReadChannelAsyncSubmit(handle, 2, CHUNK_SIZE, NULL, error);
 			CHECK_STATUS(status, 28, cleanup);
@@ -822,14 +841,14 @@ int umdkContWait(
 		status = umdkDirectReadBytesAsync(handle, CB_FLAG, 2, error);
 		CHECK_STATUS(status, status, cleanup);
 
-		if ( debug ) {
+		if ( g_traceFile ) {
 			// Await the requested trace data
 			status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, error);
 			CHECK_STATUS(status, status, cleanup);
 			CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 
 			// Write it to the trace-log
-			fwrite(recvData, 1, actualLength, file);
+			fwrite(recvData, 1, actualLength, g_traceFile);
 		}
 
 		// Await the requested command status flag
@@ -838,16 +857,16 @@ int umdkContWait(
 		CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 	} while ( recvData[0] != 0x00 || recvData[1] != CF_READY );
 
-	if ( debug ) {
+	if ( g_traceFile ) {
 		// Await the final block of trace-data
 		status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, error);
 		CHECK_STATUS(status, status, cleanup);
 		CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 		
 		// Write it to the trace-log
-		fwrite(recvData, 1, actualLength, file);
-		fclose(file);
-		file = NULL;
+		fwrite(recvData, 1, actualLength, g_traceFile);
+		fclose(g_traceFile);
+		g_traceFile = NULL;
 	}
 	
 	// Await the final command-flag
@@ -867,23 +886,7 @@ int umdkContWait(
 			u->longs[i] = bigEndian32(u->longs[i]);
 		}
 	}
-
-	if ( debug ) {
-		// Read RAM
-		status = umdkReadBytes(handle, 0xFF0000, 65536, tmpData, error);
-		CHECK_STATUS(status, status, cleanup);
-		
-		// Save it
-		file = fopen("ramAfter.bin", "wb");
-		CHECK_STATUS(!file, 13, cleanup, "umdkContWait(): Unable to open ramAfter.bin for writing!");
-		fwrite(tmpData, 1, 65536, file);
-		fclose(file);
-		file = NULL;
-	}
 cleanup:
-	if ( file ) {
-		fclose(file);
-	}
 	return retVal;
 }
 

@@ -49,12 +49,6 @@ static struct BreakInfo breakpoints[] = {
 	{0x00000000, 0x0000}
 };
 
-static bool g_debug = false;
-
-void setDebug(bool debug) {
-	g_debug = debug;
-}
-
 // Parse a series of somechar-separated hex numbers
 // e.g parseList("a9,0a:cafe", NULL, &v1, ',', &v2, ':', &v3, '\0', NULL);
 // Remember the NULL at the end!
@@ -187,6 +181,43 @@ static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 	return send(conn, VL(RESPONSE_OK), 0);
 }
 
+static bool getHexNibble(char hexDigit, uint8 *nibble) {
+	if ( hexDigit >= '0' && hexDigit <= '9' ) {
+		*nibble = (uint8)(hexDigit - '0');
+		return false;
+	} else if ( hexDigit >= 'a' && hexDigit <= 'f' ) {
+		*nibble = (uint8)(hexDigit - 'a' + 10);
+		return false;
+	} else if ( hexDigit >= 'A' && hexDigit <= 'F' ) {
+		*nibble = (uint8)(hexDigit - 'A' + 10);
+		return false;
+	} else {
+		return true;
+	}
+}
+
+static int getHexByte(const char *p, uint8 *byte) {
+	uint8 upperNibble;
+	uint8 lowerNibble;
+	if ( !getHexNibble(p[0], &upperNibble) && !getHexNibble(p[1], &lowerNibble) ) {
+		*byte = (uint8)((upperNibble << 4) | lowerNibble);
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+// De-hexify a request
+static uint32 readRequest(const char *inBuf, uint8 *const outBuf) {
+	uint8 *outPtr = outBuf;
+	while ( *inBuf != '\0' ) {
+		getHexByte(inBuf, outPtr);
+		inBuf += 2;
+		outPtr++;
+	}
+	return outPtr - outBuf;
+}
+
 // Send response, with checksum
 static int sendResponse(const uint8 *bytes, uint32 numBytes, int conn) {
 	char rspBuf[SOCKET_BUFFER_SIZE];
@@ -294,9 +325,33 @@ static int cmdStep(int conn, struct FLContext *handle) {
 // Process GDB execute-continue command
 static int cmdContinue(int conn, struct FLContext *handle) {
 	struct Registers regs;
-	int status = umdkContWait(handle, g_debug, &regs, &g_error);
+	int status = umdkContWait(handle, &regs, &g_error);
 	CHKERR(status);
 	return send(conn, VL(RESPONSE_SIG), 0);
+}
+
+// Process GDB monitor command
+static int cmdMonitorCommand(const char *buf, int conn, struct FLContext *handle) {
+	char reqBuf[SOCKET_BUFFER_SIZE];
+	char rspBuf[SOCKET_BUFFER_SIZE];
+	uint32 numBytes = readRequest(buf, (uint8*)reqBuf);
+	reqBuf[numBytes] = '\0';
+	if ( !strncmp(reqBuf, "rd ", 3) ) {
+		const char *const fileName = reqBuf+3;
+		int status = umdkDumpRAM(handle, fileName, &g_error);
+		CHKERR(status);
+		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "OK, WRAM snapshot saved to %s\n", fileName);
+	} else if ( !strncmp(reqBuf, "tr ", 3) ) {
+		const char *const fileName = reqBuf+3;
+		if ( umdkOpenTrace(fileName) ) {
+			snprintf(rspBuf, SOCKET_BUFFER_SIZE, "Unable to open %s for writing!\n", fileName);
+		} else {
+			snprintf(rspBuf, SOCKET_BUFFER_SIZE, "OK, a trace of the next execution operation will be saved to %s\n", fileName);
+		}
+	} else {
+		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "Unrecognised command: %s\n", reqBuf);
+	}
+	return sendResponse((const uint8 *)rspBuf, strlen(rspBuf), conn);
 }
 
 // External interface: process incoming GDB RSP message
@@ -310,14 +365,14 @@ int processMessage(const char *buf, SOCKET size, int conn, struct FLContext *han
 		uint32 vbAddr;
 		uint16 oldOp;
 		if ( ch == 0x03 ) {
-			printf("GDB gave the interrupt signal!\n");
+			//printf("GDB gave the interrupt signal!\n");
 			
 			// Read address of VDP vertical interrupt vector & read 1st opcode
 			status = umdkDirectReadLong(handle, VB_VEC, &vbAddr, &g_error);
 			CHKERR(status);
 			status = umdkDirectReadWord(handle, vbAddr, &oldOp, &g_error);
 			CHKERR(status);
-			printf("vbAddr = 0x%06X, opCode = 0x%04X\n", vbAddr, oldOp);
+			//printf("vbAddr = 0x%06X, opCode = 0x%04X\n", vbAddr, oldOp);
 			
 			// Replace illegal instruction vector
 			status = umdkDirectWriteLong(handle, IL_VEC, MONITOR, &g_error);
@@ -379,8 +434,18 @@ int processMessage(const char *buf, SOCKET size, int conn, struct FLContext *han
 	case '?':
 		returnCode = send(conn, VL(RESPONSE_SIG), 0);
 		break;
+
+	// General monitor command
+	case 'q':
+		if ( strncmp(buf, "Rcmd,", 5) == 0 ) {
+			returnCode = cmdMonitorCommand(buf+5, conn, handle);
+		} else {
+			returnCode = send(conn, VL(RESPONSE_EMPTY), 0);
+		}
+		break;
+
+	// Everything else not supported:
 	default:
-		// Everything else not supported:
 		returnCode = send(conn, VL(RESPONSE_EMPTY), 0);
 	}
 	if ( returnCode < 0 ) {
