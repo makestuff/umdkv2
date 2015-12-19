@@ -8,6 +8,6 @@ You'll need an lx9/r3 board:
 
   https://github.com/makestuff/umdkv2-lx9/tree/r1
 
-You can then follow this gist to build the software:
+You can then follow the instructions in the Wiki:
 
-  https://gist.github.com/makestuff/ce9018210ff94dac5551
+  https://github.com/makestuff/umdkv2/wiki
