@@ -187,27 +187,16 @@ static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
 	return send(conn, VL(RESPONSE_OK), 0);
 }
 
-// Process GDB read-memory command
-static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
-	uint32 address, length;
-	char msgBuf[SOCKET_BUFFER_SIZE];
-	char *textPtr;
-	uint8 ioBuf[SOCKET_BUFFER_SIZE];
-	const uint8 *binPtr;
+// Send response, with checksum
+static int sendResponse(const uint8 *bytes, uint32 numBytes, int conn) {
+	char rspBuf[SOCKET_BUFFER_SIZE];
+	char *textPtr = rspBuf;
+	const uint8 *binPtr = bytes;
 	uint8 checksum, byte;
-	int status;
-	if ( parseList(cmd, NULL, &address, ',', &length, '\0', NULL) ) {
-		return -8;
-	}
-	address &= 0x00FFFFFF;
-	status = umdkReadBytes(handle, address, length, ioBuf, &g_error);
-	CHKERR(status);
-	binPtr = ioBuf;
-	textPtr = msgBuf;
 	checksum = 0;
 	*textPtr++ = '+';
 	*textPtr++ = '$';
-	while ( length-- ) {
+	while ( numBytes-- ) {
 		byte = *binPtr++;
 		textPtr[0] = hexDigits[byte >> 4];
 		textPtr[1] = hexDigits[byte & 0x0F];
@@ -218,7 +207,21 @@ static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
 	*textPtr++ = '#';
 	*textPtr++ = hexDigits[checksum >> 4];
 	*textPtr++ = hexDigits[checksum & 0x0F];
-	return send(conn, msgBuf, (unsigned int)(textPtr-msgBuf), 0);
+	return send(conn, rspBuf, (unsigned int)(textPtr-rspBuf), 0);
+}
+
+// Process GDB read-memory command
+static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
+	uint32 address, length;
+	uint8 binBuf[SOCKET_BUFFER_SIZE];
+	int status;
+	if ( parseList(cmd, NULL, &address, ',', &length, '\0', NULL) ) {
+		return -8;
+	}
+	address &= 0x00FFFFFF;
+	status = umdkReadBytes(handle, address, length, binBuf, &g_error);
+	CHKERR(status);
+	return sendResponse(binBuf, length, conn);
 }
 
 // Process GDB create-breakpoint command
