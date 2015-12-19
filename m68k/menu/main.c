@@ -13,7 +13,6 @@ void doSelect(struct FileSystem *fs, s16 choice) {
 	const u16 clustersPerStar = (u16)(length / (32*clusterLen));
 	u16 x = 0, i;
 	volatile u8 *const ssf2Reg = (volatile u8 *)0xA130F3;
-	//u8 page = 0x48;
 	u8 page = 0x40;
 	u8 *const LWM = (u8*)0x480000;
 	u8 *const HWM = LWM + 512*1024;
@@ -60,7 +59,7 @@ void doSelect(struct FileSystem *fs, s16 choice) {
 		}
 		VDP_drawText("*", x, 26);
 	}
-	*ssf2Reg = 0x40; // point back at bottom of RAM
+	*ssf2Reg = 0x49; // restore default mapping for 0x480000-0x4FFFFF range
 	__asm__("trap #0");
 }
 
