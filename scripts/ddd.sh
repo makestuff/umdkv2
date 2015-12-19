@@ -17,9 +17,7 @@ elif [ $# = 2 ]; then
 	echo "set radix 16" >> /tmp/ddd.cmd
 	echo "set \$pc=0x400180" >> /tmp/ddd.cmd
 	echo "cont" >> /tmp/ddd.cmd
-	${TOOL_DIR}/ddd -geometry 827x660+600+830 --debugger ${TOOL_DIR}/m68k-elf-gdb -x /tmp/ddd.cmd $2
-	#echo "RUN WITH: run -geometry 827x660+600+830 --debugger ${TOOL_DIR}/m68k-elf-gdb -x /tmp/ddd.cmd $2"
-	#gdb ${TOOL_DIR}/ddd
+	ddd -geometry 827x660+600+830 --debugger ${TOOL_DIR}/m68k-elf-gdb -x /tmp/ddd.cmd $2
 else
 	echo "Synopsis: ddd.sh <port> [<elfFile>]"
 fi
