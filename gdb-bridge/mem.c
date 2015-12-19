@@ -16,6 +16,8 @@ static int umdkIndirectWriteBytes(
 	struct FLContext *handle, uint32 address, const uint32 count, const uint8 *const data,
 	const char **error);
 
+#define CHUNK_SIZE 0x10000
+
 
 // *************************************************************************************************
 // **                                Direct read/write operations                                 **
@@ -715,7 +717,7 @@ int umdkContWait(
 	int retVal = 0, status, i;
 	uint8 tmpData[65536];
 	size_t scrapSize;
-	uint32 vbAddr, actualLength;
+	uint32 vbAddr, actualLength, requestLength;
 	uint16 oldOp;
 	union RegUnion {
 		struct Registers reg;
@@ -759,24 +761,29 @@ int umdkContWait(
 		CHECK_STATUS(status, 25, cleanup);
 		status = flReadChannel(handle, 0x03, 1, tmpData, error);
 		CHECK_STATUS(status, 20, cleanup);
+		tmpData[0] &= 0x1F;
 		scrapSize = tmpData[0] << 8;
 		status = flReadChannel(handle, 0x04, 1, tmpData, error);
 		CHECK_STATUS(status, 20, cleanup);
 		scrapSize |= tmpData[0];
-		while ( scrapSize ) {
-			// Clear junk from FIFO
+		scrapSize *= 7;
+
+		// Clear junk from FIFO
+		if ( scrapSize ) {
 			status = flReadChannel(handle, 0x02, scrapSize, tmpData, error);
 			CHECK_STATUS(status, 20, cleanup);
-			
-			// Verify no junk remaining
+		}
+
+		// There might be up to six straggler bytes
+		status = flReadChannel(handle, 0x03, 1, tmpData, error);
+		CHECK_STATUS(status, 20, cleanup);
+		while ( tmpData[0] & 0x80 ) {
+			status = flReadChannel(handle, 0x02, 1, tmpData, error);
+			CHECK_STATUS(status, 20, cleanup);
 			status = flReadChannel(handle, 0x03, 1, tmpData, error);
 			CHECK_STATUS(status, 20, cleanup);
-			scrapSize = tmpData[0] << 8;
-			status = flReadChannel(handle, 0x04, 1, tmpData, error);
-			CHECK_STATUS(status, 20, cleanup);
-			scrapSize |= tmpData[0];
 		}
-		
+
 		// Enable tracing
 		tmpData[0] = 0x02;
 		status = flWriteChannelAsync(handle, 0x01, 1, tmpData, error);
@@ -791,7 +798,7 @@ int umdkContWait(
 
 	if ( debug ) {
 		// Submit 1st read for some trace data
-		status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
+		status = flReadChannelAsyncSubmit(handle, 2, CHUNK_SIZE, NULL, error);
 		CHECK_STATUS(status, 28, cleanup);
 	}
 
@@ -807,7 +814,7 @@ int umdkContWait(
 
 		if ( debug ) {
 			// Submit a read for some trace data
-			status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, error);
+			status = flReadChannelAsyncSubmit(handle, 2, CHUNK_SIZE, NULL, error);
 			CHECK_STATUS(status, 28, cleanup);
 		}
 
@@ -817,22 +824,25 @@ int umdkContWait(
 
 		if ( debug ) {
 			// Await the requested trace data
-			status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+			status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, error);
 			CHECK_STATUS(status, status, cleanup);
+			CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 
 			// Write it to the trace-log
 			fwrite(recvData, 1, actualLength, file);
 		}
 
 		// Await the requested command status flag
-		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+		status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, error);
 		CHECK_STATUS(status, status, cleanup);
+		CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 	} while ( recvData[0] != 0x00 || recvData[1] != CF_READY );
 
 	if ( debug ) {
 		// Await the final block of trace-data
-		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+		status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, error);
 		CHECK_STATUS(status, status, cleanup);
+		CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 		
 		// Write it to the trace-log
 		fwrite(recvData, 1, actualLength, file);
@@ -841,8 +851,9 @@ int umdkContWait(
 	}
 	
 	// Await the final command-flag
-	status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, error);
+	status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, error);
 	CHECK_STATUS(status, status, cleanup);
+	CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 
 	// Restore old opcode to vbAddr
 	status = umdkDirectWriteWord(handle, vbAddr, oldOp, error);

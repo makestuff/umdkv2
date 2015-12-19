@@ -135,7 +135,7 @@ architecture structural of umdkv2 is
 	signal trcData     : std_logic_vector(7 downto 0);
 	signal trcValid    : std_logic;
 	signal trcReady    : std_logic;
-	signal tfDepth     : std_logic_vector(11 downto 0);
+	signal tfDepth     : std_logic_vector(12 downto 0);
 
 	-- MD register writes
 	signal regAddr     : std_logic_vector(2 downto 0);
@@ -198,12 +198,12 @@ begin
 
 	-- Select values to return for each channel when the host is reading
 	with chanAddr_in select f2hData_out <=
-		rspData                       when "0000000",
-		"000000" & reg1               when "0000001",
-		trcData                       when "0000010",
-		"0000" & tfDepth(11 downto 8) when "0000011",
-		tfDepth(7 downto 0)           when "0000100",
-		x"00"                         when others;
+		rspData                                when "0000000",
+		"000000" & reg1                        when "0000001",
+		trcData                                when "0000010",
+		trcValid & "00" & tfDepth(12 downto 8) when "0000011",
+		tfDepth(7 downto 0)                    when "0000100",
+		x"00"                                  when others;
 
 	-- Generate valid signal for responding to host reads
 	with chanAddr_in select f2hValid_out <=

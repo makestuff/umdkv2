@@ -23,6 +23,8 @@
 bool sigIsRaised(void);
 void sigRegisterHandler(void);
 
+#define CHUNK_SIZE 0x10000
+
 int main(int argc, const char *argv[]) {
 	int retVal = 0;
 	struct FLContext *handle = NULL;
@@ -419,8 +421,8 @@ int main(int argc, const char *argv[]) {
 	if ( execTrace ) {
 		FILE *file = NULL;
 		const uint8 *recvData;
-		uint32 actualLength;
-		uint8 scrapData[16400];
+		uint32 requestLength, actualLength;
+		uint8 scrapData[7*(4096+2)];
 		size_t scrapSize;
 		size_t numBlocks = 10;
 		const char *ptr = execTrace;
@@ -435,7 +437,7 @@ int main(int argc, const char *argv[]) {
 			ptr++;
 			numBlocks = (size_t)strtoul(ptr, (char**)&ptr, 0);
 			if ( *ptr != '\0' ) {
-				fprintf(stderr, "Invalid argument to option -t <file:blocks>\n");
+				fprintf(stderr, "Invalid argument to option -t <trace.log:numBlks>\n");
 				FAIL(15, cleanup);
 			}
 			
@@ -465,25 +467,32 @@ int main(int argc, const char *argv[]) {
 		CHECK_STATUS(status, 25, cleanup);
 		status = flReadChannel(handle, 0x03, 1, &byte, &error);
 		CHECK_STATUS(status, 20, cleanup);
+		byte &= 0x1F;
 		scrapSize = byte << 8;
 		status = flReadChannel(handle, 0x04, 1, &byte, &error);
 		CHECK_STATUS(status, 20, cleanup);
 		scrapSize |= byte;
+		scrapSize *= 7;
 		//printf("scrapSize = "PFSZD"\n", scrapSize);
-		while ( scrapSize ) {
-			// Clear junk from FIFO
+
+		// Clear junk from FIFO
+		if ( scrapSize ) {
 			status = flReadChannel(handle, 0x02, scrapSize, scrapData, &error);
 			CHECK_STATUS(status, 20, cleanup);
+		}
 
-			// Verify no junk remaining
+		// There might be up to six straggler bytes
+		//printf("Getting stragglers: "); fflush(stdout);
+		status = flReadChannel(handle, 0x03, 1, &byte, &error);
+		CHECK_STATUS(status, 20, cleanup);
+		while ( byte & 0x80 ) {
+			status = flReadChannel(handle, 0x02, 1, &byte, &error);
+			CHECK_STATUS(status, 20, cleanup);
+			//printf("%02X", byte); fflush(stdout);
 			status = flReadChannel(handle, 0x03, 1, &byte, &error);
 			CHECK_STATUS(status, 20, cleanup);
-			scrapSize = byte << 8;
-			status = flReadChannel(handle, 0x04, 1, &byte, &error);
-			CHECK_STATUS(status, 20, cleanup);
-			scrapSize |= byte;
-			//printf("scrapSize = "PFSZD"\n", scrapSize);
 		}
+		//printf("\n");
 
 		// Enable tracing
 		byte = 0x02;
@@ -491,13 +500,14 @@ int main(int argc, const char *argv[]) {
 		CHECK_STATUS(status, 25, cleanup);
 
 		// Start reading
-		status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, &error);
+		status = flReadChannelAsyncSubmit(handle, 0x02, CHUNK_SIZE, NULL, &error);
 		CHECK_STATUS(status, 28, cleanup);
 		do {
-			status = flReadChannelAsyncSubmit(handle, 2, 22528, NULL, &error);
+			status = flReadChannelAsyncSubmit(handle, 0x02, CHUNK_SIZE, NULL, &error);
 			CHECK_STATUS(status, 29, cleanup);
-			status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, &error);
+			status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, &error);
 			CHECK_STATUS(status, 30, cleanup);
+			CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 			fwrite(recvData, 1, actualLength, file);
 			printf(".");
 			fflush(stdout);
@@ -507,8 +517,9 @@ int main(int argc, const char *argv[]) {
 		} else {
 			printf("\nCaught SIGINT, quitting...\n");
 		}
-		status = flReadChannelAsyncAwait(handle, &recvData, &actualLength, &actualLength, &error);
+		status = flReadChannelAsyncAwait(handle, &recvData, &requestLength, &actualLength, &error);
 		CHECK_STATUS(status, 31, cleanup);
+		CHECK_STATUS(actualLength != requestLength, 31, cleanup);
 		fwrite(recvData, 1, actualLength, file);
 		fclose(file);
 	}
@@ -538,6 +549,6 @@ void usage(const char *prog) {
 	printf("  -r <file:addr:len> read data from the given address\n");
 	printf("  -c <file:addr>     compare the file with what's at the given address\n");
 	printf("  -x <0|1|2>         choose 0->reset, 1->execute, 2->reset then execute\n");
-	printf("  -t <traceFile>     save execution trace\n");
+	printf("  -t <t.log:numBlks> save execution trace\n");
 	printf("  -h                 print this help and exit\n");
 }
