@@ -66,12 +66,13 @@ boot:
 	dbra	d0, 2b
 
 	/* Load menu program vectors + cart metadata (0x200 bytes) */
-	move.b	#0x40, 0xA130F3
+	move.b	#0x40, 0xA130F3  /* page 0 at 0x480000 */
 	lea	0x480000, a1
 	move.w	#0x00ff, d0
 3:
 	move.w	SPIDATW(a0), (a1)+
 	dbra	d0, 3b
+	move.b	#0x49, 0xA130F3  /* page 9 at 0x480000 */
 
 	/* Load menu program code (64KiB less 0x200 bytes) */
 	lea	0x420200, a1
