@@ -6,13 +6,11 @@ if [ -e ${SGDK} ]; then
   echo "SGDK already installed!"
   exit 1
 fi
-mkdir ${SGDK}
-cd ${SGDK}
 echo Fetching SGDK v095...
-wget -q https://dl.dropboxusercontent.com/u/80983693/${SGDK}.7z
-#cp ../${SGDK}.7z .
-echo Uncompressing...
-7za x ${SGDK}.7z
+wget -qO- https://dl.dropboxusercontent.com/u/80983693/umdkv2/${SGDK}.tar.bz2 | tar Jxf -
+
+echo Patching...
+cd ${SGDK}
 cat > src/libres.s <<EOF
 .text
 
@@ -284,4 +282,6 @@ patch src/sys.c <<EOF
 -    Z80_init();
 +    //Z80_init();
 EOF
+
+echo Building...
 make -C src
