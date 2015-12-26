@@ -222,6 +222,7 @@ _Reset:
 	move.w	(a0)+, d0
 1:	move.l	(a0)+, (a1)+
 	dbra	d0, 1b
+	move.b	#0x49, 0xA130F3		/* restore default mapping for 0x480000-0x4FFFFF range */
 	move.w	#0xDEAD, 0xA13006
 2:	bra.s	2b
 
