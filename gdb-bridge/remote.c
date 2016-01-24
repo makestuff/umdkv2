@@ -1,14 +1,38 @@
-// This module has just one entry point:
-//   int processMessage(const char *buf, int size, int conn)
-//     buf - an incoming GDB remote message.
-//     size - the number of bytes in the message.
-//     conn - the file handle to write the response to: can be a TCP socket or something else.
-//     handle - an FPGALink handle
-//
+/*******************************************************************
+ *      UMDKv2
+ *******************************************************************/
+
+/*******************************************************************
+ *			Name:				md_vdp.h
+ *			Author:				Chris McClelland.
+ *			Purpose:			None.
+ *			Date-First:			20/12/2015.
+ *			Date-Last:			20/12/2015.
+ *			Notes:				TS=4.
+ *								This module has just one entry point:
+ *								int processMessage(const char *buf, int size, int conn)
+ *								buf - an incoming GDB remote message.
+ *								size - the number of bytes in the message.
+ *								conn - the file handle to write the response to: can be a TCP socket or something else.
+ *								handle - an FPGALink handle.
+
+ *			Changes:			20/12/2015
+ *
+ *								Initial Work.
+ *
+ *								08/01/2016:
+ *
+ *								cmdMonitorCommand: Added command vdpstat - MintyTheCat
+ *
+ *******************************************************************/
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <ctype.h>
 #ifdef WIN32
 	#include <io.h>
 #else
@@ -19,6 +43,32 @@
 #include "sock.h"
 #include "remote.h"
 #include "mem.h"
+#include "common.h"
+#include "md_vdp.h"
+
+/*******************************************************************
+ *	[Constants]
+ *******************************************************************/
+
+#define UGB_CMD_HELPCMDLIST_NUMCMDS			5
+#define UGB_CMD_HELPCMDLIST_CMDHELPMAXLEN	40
+
+//#define	UGB_BUFF_SIZE1	(SOCKET_BUFFER_SIZE/2)
+#define	UGB_BUFF_SIZE1	(SOCKET_BUFFER_SIZE)
+#define	UGB_BUFF_SIZE2	(2*SOCKET_BUFFER_SIZE)
+
+/*******************************************************************
+ *	[Globals]
+ *******************************************************************/
+
+static const char g_cmdHelpCmdList[UGB_CMD_HELPCMDLIST_NUMCMDS][UGB_CMD_HELPCMDLIST_CMDHELPMAXLEN] =
+{
+	{"rd: dump WRAM to file.\n"},
+	{"tr: perform a trace to file.\n"},
+	{"vdpstat: inspect the VDP's status.\n"},
+	{""},
+	{"help: this command.\n"}
+};
 
 // Hex digits used in cmdReadMemory() and checksum():
 static const char hexDigits[] = {
@@ -48,6 +98,42 @@ static struct BreakInfo breakpoints[] = {
 	{0x00000000, 0x0000},
 	{0x00000000, 0x0000}
 };
+
+/*******************************************************************
+ *	[Function Prototypes]
+ *******************************************************************/
+
+/*******************************************************************
+ *   FunctionName:   UGB_Cmd_HelpCmd.
+ *   Synopsis:       None.
+ *   Input:          None.
+ *   Output:         None.
+ *   Returns:        None.
+ *   Description:    None.
+ *   Cautions:       None.
+ *   Comments:       None.
+ *******************************************************************/
+static enum t_ugb_moncmd_return_code_e
+UGB_Cmd_HelpCmd	(	char * p_buff	)
+{
+	uint8	iter_helpCmd	=0;
+
+	if(NULL	==p_buff)
+	{
+		/*	TODO: error logging.	*/
+		return(ugb_moncmd_fail_nullargs);
+	}
+
+	for(iter_helpCmd=0;iter_helpCmd	<UGB_CMD_HELPCMDLIST_NUMCMDS;iter_helpCmd++)
+	{	strcat(p_buff,g_cmdHelpCmdList[iter_helpCmd]);	}
+
+	return(ugb_moncmd_success);
+}
+
+
+/*******************************************************************
+ *	[Functions]
+ *******************************************************************/
 
 // Parse a series of somechar-separated hex numbers
 // e.g parseList("a9,0a:cafe", NULL, &v1, ',', &v2, ':', &v3, '\0', NULL);
@@ -331,26 +417,89 @@ static int cmdContinue(int conn, struct FLContext *handle) {
 }
 
 // Process GDB monitor command
-static int cmdMonitorCommand(const char *buf, int conn, struct FLContext *handle) {
+static int cmdMonitorCommand(const char *buf, int conn, struct FLContext *handle)
+{
 	char reqBuf[SOCKET_BUFFER_SIZE];
 	char rspBuf[SOCKET_BUFFER_SIZE];
+	char tmpBuf[UGB_BUFF_SIZE2];
 	uint32 numBytes = readRequest(buf, (uint8*)reqBuf);
 	reqBuf[numBytes] = '\0';
-	if ( !strncmp(reqBuf, "rd ", 3) ) {
+	int status = (-1);
+	enum t_ugb_moncmd_return_code_e	retCodeCmd			=ugb_moncmd_fail;
+	enum t_ugb_bool_e				flag_vdpInterlace	=f_false;
+	uint16	palNum	=0;
+
+	tmpBuf[0] = '\0';
+	if ( !strncmp(reqBuf, "rd ", 3) )
+	{
 		const char *const fileName = reqBuf+3;
-		int status = umdkDumpRAM(handle, fileName, &g_error);
+		status = umdkDumpRAM(handle, fileName, &g_error);
 		CHKERR(status);
 		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "OK, WRAM snapshot saved to %s\n", fileName);
-	} else if ( !strncmp(reqBuf, "tr ", 3) ) {
+	}
+	else if ( !strncmp(reqBuf, "tr ", 3) )
+	{
 		const char *const fileName = reqBuf+3;
-		if ( umdkOpenTrace(fileName) ) {
+		if ( umdkOpenTrace(fileName) )
+		{
 			snprintf(rspBuf, SOCKET_BUFFER_SIZE, "Unable to open %s for writing!\n", fileName);
-		} else {
+		}
+		else
+		{
 			snprintf(rspBuf, SOCKET_BUFFER_SIZE, "OK, a trace of the next execution operation will be saved to %s\n", fileName);
 		}
-	} else {
+	}
+	else if ( !strncmp(reqBuf, "vdpstat", 7) )	/*	MintyTheCat.	*/
+	{
+		union	t_ugb_vdpstat_u	vdpStat;
+		tmpBuf[0] = '\0';
+
+		UGB_VDP_VDPStatus(handle,tmpBuf,UGB_BUFF_SIZE1,&g_error);	/*	TODO: handle return.*/
+		snprintf(rspBuf,SOCKET_BUFFER_SIZE,"%s",tmpBuf);
+	}
+	else if ( !strncmp(reqBuf, "vdphvcnt", 8) )
+	{
+		//flag_vdpInterlace =f_false;
+		flag_vdpInterlace =f_true;
+		tmpBuf[0] = '\0';
+
+		UGB_VDP_GetVDPHVCnt(handle,tmpBuf,UGB_BUFF_SIZE1,flag_vdpInterlace,&g_error);	/*	TODO: handle return.*/
+
+		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "\n%s\n", tmpBuf);
+	}
+	else if ( !strncmp(reqBuf, "dumpcram", 8) )
+	{
+
+		tmpBuf[0] = *(reqBuf+9);
+		tmpBuf[1] = '\0';
+		
+		palNum=atoi(tmpBuf);
+
+		UGB_VDP_DumpCRAM(handle,tmpBuf,UGB_BUFF_SIZE2,palNum,&g_error);
+
+		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "\npal num = %d  CRAM Dump :%s\n",palNum,tmpBuf);
+	}
+	else if ( !strncmp(reqBuf, "test", 4) )
+	{
+		//(*) used only for testing - not a real command and to be removed.
+		palNum=1;
+		UGB_VDP_DummyTest(handle,tmpBuf,UGB_BUFF_SIZE2,palNum,&g_error);
+		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "\n%s",tmpBuf);
+	}
+	else if ( !strncmp(reqBuf, "help",4) )
+	{
+		if(ugb_moncmd_success !=(retCodeCmd=UGB_Cmd_HelpCmd(tmpBuf)))
+		{
+			/*	TODO: error logging/handling.	*/
+		}
+
+		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "Monitor Help: \n\n%s\n", tmpBuf);
+	}
+	else
+	{
 		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "Unrecognised command: %s\n", reqBuf);
 	}
+
 	return sendResponse((const uint8 *)rspBuf, strlen(rspBuf), conn);
 }
 
