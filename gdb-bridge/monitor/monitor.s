@@ -6,21 +6,7 @@
 	address	= cmdFlag + 4*1
 	length	= cmdFlag + 4*2
 	svBase	= cmdFlag + 4*3
-	d0Save	= svBase + 4*0
-	d1Save	= svBase + 4*1
-	d2Save	= svBase + 4*2
-	d3Save	= svBase + 4*3
-	d4Save	= svBase + 4*4
-	d5Save	= svBase + 4*5
-	d6Save	= svBase + 4*6
-	d7Save	= svBase + 4*7
-	a0Save	= svBase + 4*8
-	a1Save	= svBase + 4*9
-	a2Save	= svBase + 4*10
-	a3Save	= svBase + 4*11
-	a4Save	= svBase + 4*12
-	a5Save	= svBase + 4*13
-	fpSave	= svBase + 4*14
+	regSave	= svBase + 4*0 /* d0-d7 and a0-a6 (14 32-bit registers) are saved starting at this offset */
 	spSave	= svBase + 4*15
 	srSave	= svBase + 4*16
 	pcSave	= svBase + 4*17
@@ -97,7 +83,7 @@ boot:
 	.org    0x000100
 main:
 	move.w	#0x2700, sr		/* disable interrupts */
-	movem.l d0-d7/a0-a6, d0Save	/* save all registers in host-accessible memory */
+	movem.l d0-d7/a0-a6, regSave	/* save all registers in host-accessible memory */
 	move.l	sp, d0
 	addq.l	#6, d0
 	move.l	d0, spSave		/* should look at saved status reg to decide whether to save USP or SSP */
@@ -121,7 +107,7 @@ lda2:	jsr	0(pc, a0)		/* ...and jump to it */
 
 quit:
 	move.w	#0, cmdFlag		/* tell host we're running */
-	movem.l d0Save, d0-d7/a0-a6	/* restore registers from (possibly host-modified) memory */
+	movem.l regSave, d0-d7/a0-a6	/* restore registers from (possibly host-modified) memory */
 	move.w	srSave+2, 0(sp)
 	move.l	pcSave, 2(sp)
 	rte
