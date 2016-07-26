@@ -6,7 +6,7 @@
 	address	= cmdFlag + 4*1
 	length	= cmdFlag + 4*2
 	svBase	= cmdFlag + 4*3
-	regSave	= svBase + 4*0 /* d0-d7 and a0-a6 (14 32-bit registers) are saved starting at this offset */
+	regSave	= svBase + 4*0 /* d0-d7 and a0-a6 (15 32-bit registers) are saved starting at this offset */
 	spSave	= svBase + 4*15
 	srSave	= svBase + 4*16
 	pcSave	= svBase + 4*17
