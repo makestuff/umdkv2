@@ -59,7 +59,7 @@ void doSelect(struct FileSystem *fs, s16 choice) {
 		}
 		VDP_drawText("*", x, 26);
 	}
-	*ssf2Reg = 0x49; // restore default mapping for 0x480000-0x4FFFFF range
+	*ssf2Reg = 0x40; // point back at bottom of RAM
 	__asm__("trap #0");
 }
 
