@@ -20,8 +20,7 @@ doing an initial test of a UMDK cart (checking for solder bridges, etc):
 
 The result is an fpga.xsvf file, which you can load using the flcli tool.
 
-  wget -q https://dl.dropboxusercontent.com/u/80983693/umdkv2/sigtest.bin.bz2
-  bunzip2 sigtest.bin.bz2
+  wget -qO- http://tiny.cc/umdk-sigtest | bunzip2 > sigtest.bin
   ${HOME}/umdkv2-bin/loader -w sigtest.bin:0 -x 2 -t trace.bin:2048
   ${HOME}/umdkv2-bin/logread trace.bin | grep -v HEARTBEAT | head -8388250 | awk '{print $2$3$4$5}' | md5sum
 
@@ -30,6 +29,5 @@ something else, it means your UMDK cart is not operating correctly. Try saving
 your trace data to a file and comparing it with the expected trace:
 
   ${HOME}/umdkv2-bin/logread trace.bin | grep -v HEARTBEAT | head -8388250 | awk '{print $2$3$4$5}' > result.txt
-  wget -q https://dl.dropboxusercontent.com/u/80983693/umdkv2/expected.txt.bz2
-  bunzip2 expected.txt.bz2
+  wget -qO- http://tiny.cc/umdk-expected | bunzip2 > expected.txt
   diff expected.txt result.txt | less

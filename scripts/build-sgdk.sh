@@ -7,7 +7,7 @@ if [ -e ${SGDK} ]; then
   exit 1
 fi
 echo Fetching SGDK v095...
-wget -qO- https://dl.dropboxusercontent.com/u/80983693/umdkv2/${SGDK}.tar.bz2 | tar Jxf -
+wget -qO- http://tiny.cc/umdk-${SGDK} | tar Jxf -
 
 echo Patching...
 cd ${SGDK}
