@@ -1,5 +1,5 @@
 // This module has just one entry point:
-//   int processMessage(const char *buf, int size, int conn)
+//   int processMessage(const char *buf, int size, SOCKET conn)
 //     buf - an incoming GDB remote message.
 //     size - the number of bytes in the message.
 //     conn - the file handle to write the response to: can be a TCP socket or something else.
@@ -11,6 +11,7 @@
 #include <stdarg.h>
 #ifdef WIN32
 	#include <io.h>
+	#define snprintf _snprintf
 #else
 	#include <unistd.h>
 	#include <sys/socket.h>
@@ -97,7 +98,7 @@ static const char *g_error = NULL;
 #define CHKERR(s) do { if ( s ) { if ( g_error ) { printf("%s\n", g_error); flFreeError(g_error); g_error = NULL; } else { printf("Error code %d\n", status); } } } while(0)
 
 // Process GDB write-register command
-static int cmdWriteRegister(const char *cmd, int conn, struct FLContext *handle) {
+static int cmdWriteRegister(const char *cmd, SOCKET conn, struct FLContext *handle) {
 	char *end;
 	uint32 reg;
 	uint32 val;
@@ -117,7 +118,7 @@ static int cmdWriteRegister(const char *cmd, int conn, struct FLContext *handle)
 }
 
 // Process GDB read-register command
-static int cmdReadRegister(const char *cmd, int conn, struct FLContext *handle) {
+static int cmdReadRegister(const char *cmd, SOCKET conn, struct FLContext *handle) {
 	uint32 reg, val;
 	char response[13];
 	int status;
@@ -134,7 +135,7 @@ static int cmdReadRegister(const char *cmd, int conn, struct FLContext *handle) 
 }
 
 // Process GDB read-all-registers command
-static int cmdReadRegisters(int conn, struct FLContext *handle) {
+static int cmdReadRegisters(SOCKET conn, struct FLContext *handle) {
 	char response[2+8*18+3];
 	struct Registers regs;
 	int status = umdkRemoteAcquire(handle, &regs, &g_error);
@@ -152,7 +153,7 @@ static int cmdReadRegisters(int conn, struct FLContext *handle) {
 void printMessage(const unsigned char *data, int length);
 
 // Process GDB write-memory command
-static int cmdWriteMemory(const char *cmd, int conn, struct FLContext *handle) {
+static int cmdWriteMemory(const char *cmd, SOCKET conn, struct FLContext *handle) {
 	uint32 address, length, numBytes;
 	uint8 ioBuf[SOCKET_BUFFER_SIZE], *binary = ioBuf, byte;
 	int status;
@@ -215,11 +216,11 @@ static uint32 readRequest(const char *inBuf, uint8 *const outBuf) {
 		inBuf += 2;
 		outPtr++;
 	}
-	return outPtr - outBuf;
+	return (uint32)(outPtr - outBuf);
 }
 
 // Send response, with checksum
-static int sendResponse(const uint8 *bytes, uint32 numBytes, int conn) {
+static int sendResponse(const uint8 *bytes, uint32 numBytes, SOCKET conn) {
 	char rspBuf[SOCKET_BUFFER_SIZE];
 	char *textPtr = rspBuf;
 	const uint8 *binPtr = bytes;
@@ -242,7 +243,7 @@ static int sendResponse(const uint8 *bytes, uint32 numBytes, int conn) {
 }
 
 // Process GDB read-memory command
-static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
+static int cmdReadMemory(const char *cmd, SOCKET conn, struct FLContext *handle) {
 	uint32 address, length;
 	uint8 binBuf[SOCKET_BUFFER_SIZE];
 	int status;
@@ -256,7 +257,7 @@ static int cmdReadMemory(const char *cmd, int conn, struct FLContext *handle) {
 }
 
 // Process GDB create-breakpoint command
-static int cmdCreateBreakpoint(const char *cmd, int conn, struct FLContext *handle) {
+static int cmdCreateBreakpoint(const char *cmd, SOCKET conn, struct FLContext *handle) {
 	uint32 type, addr, kind;
 	int i, status;
 	if ( parseList(cmd, NULL, &type, ',', &addr, ',', &kind, '\0', NULL) ) {
@@ -292,7 +293,7 @@ static int cmdCreateBreakpoint(const char *cmd, int conn, struct FLContext *hand
 }
 
 // Process GDB delete-breakpoint command
-static int cmdDeleteBreakpoint(const char *cmd, int conn, struct FLContext *handle) {
+static int cmdDeleteBreakpoint(const char *cmd, SOCKET conn, struct FLContext *handle) {
 	uint32 type, addr, kind;
 	int i, status;
 	if ( parseList(cmd, NULL, &type, ',', &addr, ',', &kind, '\0', NULL) ) {
@@ -315,7 +316,7 @@ static int cmdDeleteBreakpoint(const char *cmd, int conn, struct FLContext *hand
 }
 
 // Process GDB execute-step command
-static int cmdStep(int conn, struct FLContext *handle) {
+static int cmdStep(SOCKET conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkStep(handle, &regs, &g_error);
 	CHKERR(status);
@@ -323,7 +324,7 @@ static int cmdStep(int conn, struct FLContext *handle) {
 }
 
 // Process GDB execute-continue command
-static int cmdContinue(int conn, struct FLContext *handle) {
+static int cmdContinue(SOCKET conn, struct FLContext *handle) {
 	struct Registers regs;
 	int status = umdkContWait(handle, &regs, &g_error);
 	CHKERR(status);
@@ -331,7 +332,7 @@ static int cmdContinue(int conn, struct FLContext *handle) {
 }
 
 // Process GDB monitor command
-static int cmdMonitorCommand(const char *buf, int conn, struct FLContext *handle) {
+static int cmdMonitorCommand(const char *buf, SOCKET conn, struct FLContext *handle) {
 	char reqBuf[SOCKET_BUFFER_SIZE];
 	char rspBuf[SOCKET_BUFFER_SIZE];
 	uint32 numBytes = readRequest(buf, (uint8*)reqBuf);
@@ -351,11 +352,11 @@ static int cmdMonitorCommand(const char *buf, int conn, struct FLContext *handle
 	} else {
 		snprintf(rspBuf, SOCKET_BUFFER_SIZE, "Unrecognised command: %s\n", reqBuf);
 	}
-	return sendResponse((const uint8 *)rspBuf, strlen(rspBuf), conn);
+	return sendResponse((const uint8 *)rspBuf, (uint32)strlen(rspBuf), conn);
 }
 
 // External interface: process incoming GDB RSP message
-int processMessage(const char *buf, SOCKET size, int conn, struct FLContext *handle) {
+int processMessage(const char *buf, int size, SOCKET conn, struct FLContext *handle) {
 	int returnCode = 0;
 	const char *const end = buf + size;
 	char ch = *buf;

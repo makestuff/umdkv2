@@ -2,11 +2,7 @@
 #define ESCAPE_H
 
 #include <makestuff.h>
-#ifdef WIN32
-	#include <winsock2.h>
-#else
-	#define SOCKET int
-#endif
+#include "sock.h"
 
 void setConnection(SOCKET conn);
 bool isInterrupted(void);
