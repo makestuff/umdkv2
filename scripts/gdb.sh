@@ -1,4 +1,4 @@
-#!/bin/sh -x
+#!/bin/sh
 rm -f /tmp/gdb.cmd
 echo "set remotelogfile /tmp/gdb.log" >> /tmp/gdb.cmd
 if [ $# = 1 ]; then
