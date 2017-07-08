@@ -1,6 +1,6 @@
 #!/bin/sh
 rm -f /tmp/gdb.cmd
-echo "set remotelogfile /tmp/gdb.log" >> /tmp/gdb.cmd
+echo "set remotelogfile gdb.log" >> /tmp/gdb.cmd
 if [ $# = 1 ]; then
   # Code is already loaded and running; connect and interrupt it now:
   echo "set remote interrupt-on-connect yes" >> /tmp/gdb.cmd
