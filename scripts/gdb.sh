@@ -6,7 +6,7 @@ if [ $# = 1 ]; then
   echo "set remote interrupt-on-connect yes" >> /tmp/gdb.cmd
   echo "target remote localhost:$1" >> /tmp/gdb.cmd
   echo "set radix 16" >> /tmp/gdb.cmd
-  gdb -x /tmp/gdb.cmd
+  m68k-elf-gdb -x /tmp/gdb.cmd
 elif [ $# = 2 ]; then
   # Code has not been loaded; have GDB load it for us:
   echo "set remote interrupt-on-connect yes" >> /tmp/gdb.cmd
@@ -16,7 +16,7 @@ elif [ $# = 2 ]; then
   echo "set radix 16" >> /tmp/gdb.cmd
   echo "set \$pc=0x4000dc" >> /tmp/gdb.cmd
   echo "cont" >> /tmp/gdb.cmd
-  gdb -x /tmp/gdb.cmd $2
+  m68k-elf-gdb -x /tmp/gdb.cmd $2
 else
   echo "Synopsis: gdb.sh <port> [<elfFile>]"
 fi
